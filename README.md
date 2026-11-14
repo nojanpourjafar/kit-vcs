@@ -1,118 +1,180 @@
 # Kit
 
-Git-style version control for sample packs and loop kits.
+A version control tool for sample packs and audio loop kits, built in Python.
 
-Keep your kit folder exactly as it is. `kit` remembers every version of it, shows what changed between versions, rolls back, and records who added each sound.
+Kit lets you track changes to a folder of audio files without changing how the folder is organized. You can save versions, compare them, restore older versions, and see who originally added each sound.
 
-## Why
+## Why I built this
 
-Producers share kits as zip files, so every update is a new zip and nobody can tell what changed. Kit gives a kit folder a real history: small, readable versions in place of `MyKit_v3_FINAL.zip`.
+When producers share sample packs, updates are usually sent as new ZIP files. It can be difficult to tell which samples were added, removed, renamed, or changed between versions.
 
-## Install
+I built Kit to make managing these updates easier. Instead of keeping multiple copies of a kit, you can track its changes over time and go back to previous versions when needed.
 
-Needs Python 3.10 or newer. No other dependencies.
+## Installation
 
-```
+Requires Python 3.10 or newer. No additional dependencies are needed.
+
+```bash
 git clone https://github.com/nojanpourjafar/kit-vcs.git
 cd kit-vcs
 pip install -e .
 ```
 
-This gives you the `kit` command. To run it without installing, use `PYTHONPATH=src python -m kit ...` in place of `kit ...`.
+This installs the `kit` command. If you don't want to install the package, you can run commands using `PYTHONPATH=src python -m kit` instead.
 
-## Quick start
+## Getting started
 
-```
-python examples/make_demo_kit.py demo_kit    # 4 synthesized sounds to try it on
+You can generate a small demo kit to try out the commands:
+
+```bash
+python examples/make_demo_kit.py demo_kit
 cd demo_kit
+```
 
+Initialize Kit and save your first version:
+
+```bash
 kit init --author "Nojan"
 kit commit -m "first four sounds"
+```
 
-mv Kicks/kick_punch.wav Kicks/kick_01.wav    # rename a sample
-kit status                                   # > Kicks/kick_01.wav  (was Kicks/kick_punch.wav)
-kit commit -m "renamed the kick"             # Stored 0 new file(s), 0 bytes.
+Now try renaming one of the samples:
 
-kit log                                      # v2, v1
+```bash
+mv Kicks/kick_punch.wav Kicks/kick_01.wav
+kit status
+```
+
+Kit will recognize that the file was renamed rather than added as a completely new sample.
+
+Save the change and view the history:
+
+```bash
+kit commit -m "renamed the kick"
+kit log
 kit diff v1 v2
-kit restore v1                               # folder goes back; history stays
-kit credits                                  # who first added each sound
+```
+
+You can also restore an earlier version or check who originally added each sound:
+
+```bash
+kit restore v1
+kit credits
 ```
 
 ## Commands
 
-| Command | What it does |
+| Command | Description |
 |---|---|
-| `kit init` | Start tracking the current folder |
-| `kit status` | Show what changed since the last version |
-| `kit commit -m "message"` | Save the folder as a new version |
-| `kit log` | List every saved version, newest first |
-| `kit diff v1 v2` | Show what changed between two versions |
-| `kit restore v1` | Put the folder back to an earlier version |
-| `kit credits` | Show who first added each sound |
-| `kit push <folder>` / `kit pull <folder>` | Share through a folder (in progress) |
+| `kit init` | Initialize version tracking in the current folder |
+| `kit status` | Show changes since the last commit |
+| `kit commit -m "message"` | Save a new version |
+| `kit log` | Display commit history, newest first |
+| `kit diff v1 v2` | Compare two versions |
+| `kit restore v1` | Restore files from an earlier version |
+| `kit credits` | Show the original author of each sound |
+| `kit push <folder>` / `kit pull <folder>` | Share and retrieve versions through another folder (in progress) |
 
-Versions can be named as `v1`, `v2`, ..., as `latest`, or by the start of their ID.
+Versions can be referenced using `v1`, `v2`, and so on, `latest`, or the beginning of a commit ID.
 
 ## How it works
 
-**Every file is stored once, under the name of its own hash.**
-Each file is run through SHA-256 and saved as `.kit/objects/<hash>`. The same kick in ten versions takes the space of one kick. Renaming or moving a sample stores nothing, because the audio, and so the hash, did not change.
+Kit uses content-based storage to keep track of files.
 
-**A version is a list of "path -> hash", called a manifest.**
-It holds no audio, so it is tiny. Comparing two manifests gives the changes: a new path is an addition, a new hash at the same path is a modification, and a hash that moved to a new path is a rename.
+### File storage
 
-**Versions form a chain.**
-Each commit is a few lines of JSON: its manifest, author, message, time, and the ID of the version before it. `HEAD` holds the ID of the latest one. A commit's ID is the hash of its own JSON, so an edited old version no longer matches its ID and is caught.
+Each file is hashed using SHA-256. The resulting hash is used as the file's identifier, and the file is stored inside `.kit/objects/`.
 
-```
+If the same audio file appears in multiple versions, it is only stored once. This also means renaming or moving a sample does not create another copy of the audio, since its contents have not changed.
+
+### Manifests
+
+Each version has a manifest containing the file paths and their corresponding hashes.
+
+Kit compares these manifests to identify changes:
+- New paths are treated as added files.
+- Different hashes at an existing path indicate modified files.
+- Matching hashes at different paths can be identified as renames.
+
+### Commits and history
+
+Every commit contains its manifest, author, commit message, timestamp, and the ID of the previous commit. Commit data is stored as JSON.
+
+A commit ID is generated by hashing its contents. This allows Kit to detect changes to previously saved commit records.
+
+The `HEAD` file stores the ID of the most recent commit.
+
+### Directory structure
+
+The original kit folder stays in place. Kit stores its version history in a hidden `.kit` directory.
+
+```text
 MyKit/
-  Kicks/kick_01.wav ...       your sounds, untouched
+  Kicks/
+    kick_01.wav
+  Snares/
+    snare_01.wav
   .kit/
-    objects/ab/cdef...        every file ever saved, named by hash
-    commits/<id>.json         one small file per version
-    HEAD                      ID of the latest version
-    config.json               author name, for credits
+    objects/
+      ab/
+        cdef...
+    commits/
+      <commit-id>.json
+    HEAD
+    config.json
 ```
 
-Two safety rules run through the code. Files are written to a temporary name and then renamed, so a crash never leaves half a file. `HEAD` always moves last, so a failed save leaves the previous version current.
+### File safety
 
-`kit restore` does not rewrite history. It puts the files back and leaves `HEAD` alone, so the rollback shows up as ordinary changes that can be committed as a new version.
+Files are written to temporary locations before being renamed to their final locations. This helps prevent incomplete files from being left behind if something goes wrong during a write.
 
-Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, so renaming a sample does not change who added it.
+When creating a commit, Kit updates `HEAD` only after the required data has been saved. This helps ensure that a failed commit does not replace the previous version.
 
-## Project layout
+Restoring a version changes the files in the working folder but does not move `HEAD` or delete any commits. The restored files appear as changes in `kit status`, allowing you to commit the rollback as a new version.
 
-| File | Job |
+### Credits
+
+Credits are based on the first commit containing a file's hash, rather than its filename. This means the original author is still associated with a sound even if it is renamed or moved.
+
+## Project structure
+
+| File | Description |
 |---|---|
-| `src/kit/hashing.py` | SHA-256 of files and bytes |
-| `src/kit/objects.py` | The content-addressed object store |
-| `src/kit/manifest.py` | Scan a folder, compare two snapshots |
-| `src/kit/commits.py` | The commit record and its ID |
-| `src/kit/repo.py` | Commit, log, status, restore, credits |
-| `src/kit/audio.py` | WAV length and sample rate for output |
-| `src/kit/remote.py` | Remote storage and sync |
-| `src/kit/cli.py` | The `kit` command |
+| `src/kit/hashing.py` | Hashes files and file contents using SHA-256 |
+| `src/kit/objects.py` | Stores and retrieves files using their hashes |
+| `src/kit/manifest.py` | Scans folders and compares manifests |
+| `src/kit/commits.py` | Creates and manages commit records |
+| `src/kit/repo.py` | Handles commits, history, status, restore, and credits |
+| `src/kit/audio.py` | Reads WAV file information, including length and sample rate |
+| `src/kit/remote.py` | Handles remote storage and synchronization |
+| `src/kit/cli.py` | Implements the command-line interface |
 
 ## Roadmap
 
-| Version | What it adds | State |
+| Version | Planned features | Status |
 |---|---|---|
-| 1 | Local versions: commit, history, compare, roll back, credits | done |
-| 2 | Share through a folder (USB drive, Google Drive, Dropbox): `push` and `pull` that send only what is missing | remote storage done, sync in progress |
-| 2b | A cloud bucket (S3 or Cloudflare R2) as a second kind of remote | planned |
-| 3 | Fork a pack, add to it, send it back, with credits across people | planned |
-| 4 | Web page that shows a version's changes with waveforms and play buttons | planned |
+| 1 | Local version tracking, commits, history, comparisons, restore, and credits | Complete |
+| 2 | Push and pull through folders such as USB drives, Google Drive, and Dropbox | Remote storage implemented; synchronization in progress |
+| 2b | Support for cloud storage using S3 or Cloudflare R2 | Planned |
+| 3 | Fork kits, contribute changes, and preserve credits across contributors | Planned |
+| 4 | Web interface for viewing changes, waveforms, and playing samples | Planned |
 
-Also planned: caching hashes by file size and modified time so large kits scan quickly, a `.kitignore` file, and compressing stored objects.
+Other improvements being considered:
+- Cache file hashes using file size and modification time to speed up scans.
+- Add a `.kitignore` file to exclude selected files.
+- Compress stored objects to reduce disk usage.
 
 ## Development
 
-```
+To install the development dependencies and run the tests:
+
+```bash
 pip install -e ".[dev]"
 python -m pytest
 ```
 
-The four sync tests in `tests/test_remote.py` are marked as expected failures until `push` and `pull` are finished.
+The four synchronization tests in `tests/test_remote.py` are currently marked as expected failures while `push` and `pull` are being completed.
 
-The package is named `kit-vcs` because the plain name `kit` is taken on PyPI. The command is `kit`.
+## Package name
+
+The Python package is published under `kit-vcs` because the name `kit` is already taken on PyPI. The installed command is still `kit`.
