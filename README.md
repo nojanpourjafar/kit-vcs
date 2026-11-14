@@ -1,18 +1,29 @@
 # Kit
 
-Git-style version control for sample packs and loop kits. You keep your kit folder exactly as it is; `kit` remembers every version of it, shows what changed, rolls back, and records who added each sound.
+Git-style version control for sample packs and loop kits.
 
-Kit is Git for your kits. You run it as `kit`, the way you run Git as `git`.
+Keep your kit folder exactly as it is. `kit` remembers every version of it, shows what changed between versions, rolls back, and records who added each sound.
 
-The package itself is named `kit-vcs`, because the plain name `kit` is already taken on PyPI (it is not published there yet). The command you type is still `kit`.
+## Why
 
-## Try it in two minutes
+Producers share kits as zip files, so every update is a new zip and nobody can tell what changed. Kit gives a kit folder a real history: small, readable versions in place of `MyKit_v3_FINAL.zip`.
+
+## Install
 
 Needs Python 3.10 or newer. No other dependencies.
 
 ```
-pip install -e .                             # gives you the `kit` command
-python examples/make_demo_kit.py demo_kit    # 4 synthesized sounds to play with
+git clone https://github.com/nojanpourjafar/kit-vcs.git
+cd kit-vcs
+pip install -e .
+```
+
+This gives you the `kit` command. To run it without installing, use `PYTHONPATH=src python -m kit ...` in place of `kit ...`.
+
+## Quick start
+
+```
+python examples/make_demo_kit.py demo_kit    # 4 synthesized sounds to try it on
 cd demo_kit
 
 kit init --author "Nojan"
@@ -28,17 +39,30 @@ kit restore v1                               # folder goes back; history stays
 kit credits                                  # who first added each sound
 ```
 
-Without installing: run `PYTHONPATH=src python -m kit ...` in place of `kit ...`.
+## Commands
 
-## How it works: three ideas
+| Command | What it does |
+|---|---|
+| `kit init` | Start tracking the current folder |
+| `kit status` | Show what changed since the last version |
+| `kit commit -m "message"` | Save the folder as a new version |
+| `kit log` | List every saved version, newest first |
+| `kit diff v1 v2` | Show what changed between two versions |
+| `kit restore v1` | Put the folder back to an earlier version |
+| `kit credits` | Show who first added each sound |
+| `kit push <folder>` / `kit pull <folder>` | Share through a folder (in progress) |
 
-**1. Every file is stored once, under the name of its own hash.**
-`kit` runs each file through SHA-256 and saves it as `.kit/objects/<hash>`. The same kick in ten versions takes the space of one kick. Renaming or moving a sample stores nothing, because the audio (and so the hash) did not change. This is called content-addressed storage.
+Versions can be named as `v1`, `v2`, ..., as `latest`, or by the start of their ID.
 
-**2. A version is a list of "path -> hash", called a manifest.**
+## How it works
+
+**Every file is stored once, under the name of its own hash.**
+Each file is run through SHA-256 and saved as `.kit/objects/<hash>`. The same kick in ten versions takes the space of one kick. Renaming or moving a sample stores nothing, because the audio, and so the hash, did not change.
+
+**A version is a list of "path -> hash", called a manifest.**
 It holds no audio, so it is tiny. Comparing two manifests gives the changes: a new path is an addition, a new hash at the same path is a modification, and a hash that moved to a new path is a rename.
 
-**3. Versions form a chain.**
+**Versions form a chain.**
 Each commit is a few lines of JSON: its manifest, author, message, time, and the ID of the version before it. `HEAD` holds the ID of the latest one. A commit's ID is the hash of its own JSON, so an edited old version no longer matches its ID and is caught.
 
 ```
@@ -48,68 +72,47 @@ MyKit/
     objects/ab/cdef...        every file ever saved, named by hash
     commits/<id>.json         one small file per version
     HEAD                      ID of the latest version
-    config.json               your name, for credits
+    config.json               author name, for credits
 ```
 
-Two safety rules run through the code. Files are written to a temporary name and then renamed, so a crash never leaves half a file. And `HEAD` always moves last, so a failed save leaves the previous version current.
+Two safety rules run through the code. Files are written to a temporary name and then renamed, so a crash never leaves half a file. `HEAD` always moves last, so a failed save leaves the previous version current.
 
-## Code map
+`kit restore` does not rewrite history. It puts the files back and leaves `HEAD` alone, so the rollback shows up as ordinary changes that can be committed as a new version.
 
-| File | Job | State |
-|---|---|---|
-| `src/kit/hashing.py` | SHA-256 of files and bytes | built |
-| `src/kit/objects.py` | The object store (idea 1) | built |
-| `src/kit/manifest.py` | Scan a folder, compare two snapshots (idea 2) | built |
-| `src/kit/commits.py` | The commit record and its ID (idea 3) | built |
-| `src/kit/repo.py` | Ties it together: commit, log, status, restore, credits | built |
-| `src/kit/audio.py` | WAV length and sample rate for nicer output | built |
-| `src/kit/cli.py` | The `kit` command | built |
-| `src/kit/remote.py` | `FolderRemote` (a shared folder as a remote) | built |
-| `src/kit/remote.py` | `push` and `pull` | **yours to write** |
-| `tests/` | 22 passing tests, plus 4 waiting on push and pull | built |
+Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, so renaming a sample does not change who added it.
 
-Read the files in the order of the table. Each one is short and starts with a comment explaining why it exists.
+## Project layout
+
+| File | Job |
+|---|---|
+| `src/kit/hashing.py` | SHA-256 of files and bytes |
+| `src/kit/objects.py` | The content-addressed object store |
+| `src/kit/manifest.py` | Scan a folder, compare two snapshots |
+| `src/kit/commits.py` | The commit record and its ID |
+| `src/kit/repo.py` | Commit, log, status, restore, credits |
+| `src/kit/audio.py` | WAV length and sample rate for output |
+| `src/kit/remote.py` | Remote storage and sync |
+| `src/kit/cli.py` | The `kit` command |
 
 ## Roadmap
 
 | Version | What it adds | State |
 |---|---|---|
 | 1 | Local versions: commit, history, compare, roll back, credits | done |
-| 2 | Share through a folder: `push` and `pull` that send only what is missing | storage done; the two functions are yours |
-| 2b | A cloud bucket (S3 or Cloudflare R2) as a second remote class | not started |
-| 3 | Fork a pack, add to it, send it back (merge two histories), credits across people | not started |
-| 4 | Web page that shows a version's changes with waveforms and play buttons | not started |
+| 2 | Share through a folder (USB drive, Google Drive, Dropbox): `push` and `pull` that send only what is missing | remote storage done, sync in progress |
+| 2b | A cloud bucket (S3 or Cloudflare R2) as a second kind of remote | planned |
+| 3 | Fork a pack, add to it, send it back, with credits across people | planned |
+| 4 | Web page that shows a version's changes with waveforms and play buttons | planned |
 
-Later ideas: cache hashes by file size and modified time so big kits scan fast, a `.kitignore` file, and compressing objects.
+Also planned: caching hashes by file size and modified time so large kits scan quickly, a `.kitignore` file, and compressing stored objects.
 
-## Your part: push and pull
-
-Open `src/kit/remote.py`. The two functions at the bottom raise `NotImplementedError`, and each has a list of questions that walks you to the design. They need about 25 lines each, and everything they call already exists.
+## Development
 
 ```
-python -m pytest              # 22 passed, 4 xfailed  <- today
-python -m pytest              # 22 passed, 4 xpassed  <- once both work
+pip install -e ".[dev]"
+python -m pytest
 ```
 
-The four waiting tests are in `tests/test_remote.py`. They were checked against a working solution, so they are passable as written. When they pass, delete the `@yours_to_write` lines.
+The four sync tests in `tests/test_remote.py` are marked as expected failures until `push` and `pull` are finished.
 
-To try it for real, point two kit folders at one shared folder (a Google Drive or Dropbox folder works):
-
-```
-kit push ~/GoogleDrive/shared-kit         # from your kit
-kit pull ~/GoogleDrive/shared-kit         # from a friend's empty repo
-```
-
-## Questions you should be able to answer
-
-These are what an interviewer will ask. The code and its comments hold the answers.
-
-1. Why store files by hash, and what does that make cheap?
-2. How does `kit` tell a rename from a delete plus an add?
-3. Why is a commit's ID the hash of its contents?
-4. Why does `HEAD` move last when saving a version?
-5. Why write to a temporary file and then rename it?
-6. Why does `restore` leave history alone, where Git's `checkout` moves `HEAD`?
-7. What happens if two people push at the same time? (You will decide this in `push`.)
-8. What stops a manifest from someone else writing files outside the kit folder?
-9. Hashing a 2 GB kit on every `status` is slow. How would you avoid re-hashing unchanged files?
+The package is named `kit-vcs` because the plain name `kit` is taken on PyPI. The command is `kit`.
