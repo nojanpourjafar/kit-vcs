@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kit-vcs"
-version = "0.1.0"
+version = "0.2.0"
 description = "Kit: Git-style version control for sample packs and loop kits"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+s3 = ["boto3>=1.28"]
 
 [project.scripts]
 kit = "kit.cli:main"

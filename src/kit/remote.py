@@ -1,25 +1,30 @@
-"""Sharing a repo: remotes, push and pull.
+"""Sharing a repo: remotes, push, pull and clone.
 
-BUILT: `FolderRemote`, a remote that is just another folder. Point it at a USB
-drive or a Google Drive / Dropbox synced folder and two producers can share a
-repo with no server at all. A cloud bucket (S3, Cloudflare R2) comes later as
-a second class with the same eight methods.
+A remote is anywhere a copy of the history can live. Two kinds exist:
 
-YOURS TO WRITE: `push` and `pull`, at the bottom. They are the heart of the
-project and the part interviewers will ask about. The tests in
-tests/test_remote.py describe exactly what they must do.
+  * `FolderRemote` is just another folder. Point it at a USB drive or a
+    Google Drive / Dropbox synced folder and two producers can share a kit
+    with no server at all.
+  * `S3Remote` (in s3remote.py) is a bucket on Amazon S3, Cloudflare R2 or
+    anything else that speaks the S3 API.
+
+Both offer the same eight methods, listed in `Remote`, so push and pull are
+written once and work with either.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from .commits import Commit, lineage, parse_commit
 from .hashing import is_digest
+from .manifest import Change, loads
 from .objects import ObjectStore
-from .repo import Repo
+from .repo import KitError, Repo
 
 
 class Remote(Protocol):
@@ -84,73 +89,127 @@ class FolderRemote:
         os.replace(tmp, path)
 
 
+def normalize(spec: str) -> str:
+    """Folder remotes are saved as absolute paths, so they work from any directory."""
+    return spec if spec.startswith("s3://") else str(Path(spec).expanduser().resolve())
+
+
+def open_remote(spec: str) -> Remote:
+    """Turn what the user typed into a remote: `s3://bucket/prefix` or a folder path."""
+    if spec.startswith("s3://"):
+        from .s3remote import S3Remote  # imported late: boto3 is optional
+
+        bucket, _, prefix = spec[len("s3://"):].partition("/")
+        if not bucket:
+            raise KitError("an S3 remote looks like s3://bucket-name/optional/folder")
+        return S3Remote(bucket, prefix)
+    return FolderRemote(Path(spec).expanduser())
+
+
 @dataclass(frozen=True)
 class SyncResult:
     commits: int  # versions sent or received
     objects: int  # objects sent or received (audio files AND manifests)
-
-
-# ---------------------------------------------------------------------------
-# Yours to write. Each needs roughly 25 lines. Everything you need already
-# exists on `repo` (see repo.py) and `remote` (the eight methods above).
-# ---------------------------------------------------------------------------
+    outcome: str = ""  # pull only: "up-to-date", "fast-forward" or "merge"
+    changes: list[Change] = field(default_factory=list)  # pull only: what changed in the folder
+    conflicts: list[str] = field(default_factory=list)  # pull only: paths where both versions were kept
 
 
 def push(repo: Repo, remote: Remote) -> SyncResult:
-    """Send the versions the remote is missing, uploading only audio it lacks.
+    """Send the versions the remote is missing, uploading only audio it lacks."""
+    head = repo.head()
+    if head is None:
+        raise KitError("nothing to push yet; save a version with `kit commit` first")
 
-    Work through these questions in order. Each one is a step of the function.
+    # The remote's latest version must be part of our history. If it is not,
+    # someone else pushed versions we have never seen, and moving the remote's
+    # HEAD to ours would cut their work out of the history.
+    remote_head = remote.read_head()
+    if remote_head is not None and remote_head not in repo.ancestors(head):
+        raise KitError(
+            "the remote has versions this repo does not; run `kit pull` first, then push again"
+        )
 
-    1. Which of my versions does the remote lack?
-       The remote's HEAD is its latest version. If you walk your own history
-       backwards from your HEAD (commit.parent), where do you stop?
+    # A remote that has a commit also has everything before it (see the upload
+    # order below), so the walk can stop at the first commit it already holds.
+    missing = lineage(head, repo.load_commit, have=remote.has_commit)
+    objects = 0
+    for commit in missing:  # parents before children
+        manifest = repo.manifest_of(commit.id)
+        needed = [commit.manifest, *(entry["hash"] for entry in manifest.values())]
+        for digest in dict.fromkeys(needed):  # each hash once, order kept
+            if not remote.has_object(digest):
+                remote.upload_object(digest, repo.store.path_for(digest))
+                objects += 1
+        # A commit is written only after everything it points to. If the
+        # upload dies halfway, the remote holds some extra objects but never a
+        # version with pieces missing.
+        remote.write_commit(commit.id, repo.read_commit_bytes(commit.id))
 
-    2. What if you reach your very first version and never met the remote's
-       HEAD? What does that say about who has saved what, and why would
-       carrying on destroy someone's work? (Raise KitError and tell the
-       user to pull first. Merging two histories is version 3.)
-
-    3. For one version, what must exist on the remote before that version is
-       usable there? (Look at what a Commit points to, and what that points to.)
-       Which of those things can you skip uploading, and how do you know?
-
-    4. In what order do you upload versions, oldest first or newest first?
-       And why must `remote.write_head` be the very last call? Picture your
-       laptop dying halfway through, then a friend pulling.
-
-    Useful pieces: repo.head(), repo.load_commit(id), repo.manifest_of(id),
-    repo.read_commit_bytes(id), repo.store.path_for(hash).
-
-    Return SyncResult(commits=..., objects=...). If there was nothing to send,
-    return SyncResult(0, 0).
-    """
-    raise NotImplementedError("push is not built yet: it is yours to write, in kit/remote.py")
+    # HEAD moves last, for the same reason. Note that a folder remote cannot
+    # lock: if two people push in the same second, the later write wins. A
+    # hosted service would make this step a compare-and-swap.
+    if remote_head != head:
+        remote.write_head(head)
+    return SyncResult(len(missing), objects)
 
 
 def pull(repo: Repo, remote: Remote) -> SyncResult:
     """Fetch versions from the remote and bring the kit folder up to date.
 
-    1. What should happen if the folder has unsaved changes? (repo.status())
-
-    2. Which remote versions do I lack? Walk the REMOTE's history backwards
-       from remote.read_head(), using remote.read_commit and
-       commits.parse_commit, until you meet your own HEAD.
-       Two special cases to think through:
-         - your HEAD is None (a brand-new repo);
-         - you never meet your own HEAD. Either you are already ahead of the
-           remote (nothing to do) or the histories split (raise KitError).
-           How can you tell those two apart?
-
-    3. For each new version, oldest first: get its manifest and any audio you
-       lack into repo.store, then save the commit with repo.store_commit_bytes.
-       Hint: remote.download_object writes to a path. A file inside
-       tempfile.TemporaryDirectory() plus repo.store.put_file gets it stored
-       and re-checks its hash for free. Why is that re-check worth having?
-
-    4. Update the files, then move HEAD: repo.restore(new_head_id), then
-       repo.set_head(new_head_id). Read restore() and work out why that order
-       is right and the reverse would leave stale files behind.
-
-    Return SyncResult(commits=..., objects=...).
+    If both sides have saved new versions since they last synced, the two
+    histories are merged (see Repo.merge).
     """
-    raise NotImplementedError("pull is not built yet: it is yours to write, in kit/remote.py")
+    remote_head = remote.read_head()
+    if remote_head is None:
+        return SyncResult(0, 0, "up-to-date")
+    if repo.status():
+        raise KitError("you have unsaved changes; run `kit commit` first, then pull again")
+
+    raw: dict[str, bytes] = {}
+
+    def load_remote(commit_id: str) -> Commit:
+        raw[commit_id] = remote.read_commit(commit_id)
+        commit = parse_commit(raw[commit_id])
+        if commit.id != commit_id:
+            raise KitError(f"the remote's version {commit_id[:8]} is damaged")
+        return commit
+
+    incoming = lineage(remote_head, load_remote, have=repo.has_commit)
+    objects = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        scratch = Path(tmp) / "download"
+
+        def fetch(digest: str) -> None:
+            nonlocal objects
+            if repo.store.has(digest):
+                return
+            remote.download_object(digest, scratch)
+            # put_file hashes what arrived, so a corrupted or tampered
+            # download is caught here instead of ending up in the kit.
+            if repo.store.put_file(scratch) != digest:
+                raise KitError(f"a downloaded file did not match its hash ({digest[:8]})")
+            objects += 1
+
+        for commit in incoming:  # parents before children
+            fetch(commit.manifest)
+            for entry in loads(repo.store.read_bytes(commit.manifest)).values():
+                fetch(entry["hash"])
+            repo.store_commit_bytes(raw[commit.id])
+
+    result = repo.merge(remote_head)
+    return SyncResult(len(incoming), objects, result.kind, result.changes, result.conflicts)
+
+
+def clone(spec: str, folder, author: str | None = None) -> tuple[Repo, SyncResult]:
+    """Make a new kit folder from a remote. This is also how a pack is forked."""
+    remote = open_remote(spec)
+    if remote.read_head() is None:
+        raise KitError(f"there is nothing to clone at {spec}")
+    folder = Path(folder)
+    if folder.exists() and any(folder.iterdir()):
+        raise KitError(f"{folder} already exists and is not empty")
+    folder.mkdir(parents=True, exist_ok=True)
+    repo = Repo.init(folder, author=author)
+    repo.set_remote(normalize(spec))
+    return repo, pull(repo, remote)

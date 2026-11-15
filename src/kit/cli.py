@@ -1,17 +1,19 @@
 """The `kit` command. Each cmd_* function is one subcommand.
 
 This file only reads arguments and prints. All real work happens in repo.py,
-which keeps the logic easy to test and reusable by a future web app.
+remote.py and report.py, which keeps the logic easy to test and reusable.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import webbrowser
 from pathlib import Path
 
 from . import __version__, remote
 from .audio import describe
+from .report import build_report
 from .repo import KitError, Repo
 
 SYMBOL = {"added": "+", "removed": "-", "modified": "~", "renamed": ">"}
@@ -37,12 +39,30 @@ def _summary(changes) -> str:
     return ", ".join(f"{n} {kind}" for kind, n in counts.items())
 
 
-def _size(n: int) -> str:
+def _size(n: float) -> str:
     for unit in ("bytes", "KB", "MB"):
         if n < 1024:
             return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} GB"
+
+
+def _labels(repo: Repo) -> dict[str, str]:
+    """Commit ID -> "v1", "v2", ... for the versions on the main line."""
+    history = repo.log()
+    return {commit.id: f"v{len(history) - i}" for i, commit in enumerate(history)}
+
+
+def _remote_for(repo: Repo, spec: str | None):
+    """Open the remote named on the command line, or the saved default."""
+    spec = spec or repo.remote()
+    if not spec:
+        raise KitError("no remote given; use `kit push <folder or s3://bucket>` "
+                       "or save one with `kit remote <folder or s3://bucket>`")
+    spec = remote.normalize(spec)
+    if repo.remote() is None:
+        repo.set_remote(spec)  # the first remote used becomes the default
+    return remote.open_remote(spec)
 
 
 def cmd_init(args) -> None:
@@ -114,20 +134,80 @@ def cmd_credits(args) -> None:
     if not credits:
         print("No versions saved yet.")
         return
-    order = [commit.id for commit in reversed(repo.log())]
+    labels = _labels(repo)
     width = max(len(path) for path in credits)
+    share: dict[str, int] = {}
     for path, commit in credits.items():
-        print(f"  {path:<{width}}  {commit.author} (v{order.index(commit.id) + 1})")
+        share[commit.author] = share.get(commit.author, 0) + 1
+        print(f"  {path:<{width}}  {commit.author} ({labels.get(commit.id, commit.id[:8])})")
+    print("Split by number of sounds: " + ", ".join(
+        f"{author} {count * 100 // len(credits)}% ({count})"
+        for author, count in sorted(share.items(), key=lambda item: -item[1])))
+
+
+def cmd_remote(args) -> None:
+    repo = Repo.find()
+    if args.remote:
+        repo.set_remote(remote.normalize(args.remote))
+        print(f"Default remote set to {repo.remote()}")
+    else:
+        print(repo.remote() or "No default remote saved yet.")
 
 
 def cmd_push(args) -> None:
-    result = remote.push(Repo.find(), remote.FolderRemote(args.remote))
-    print(f"Pushed {result.commits} version(s), {result.objects} object(s).")
+    repo = Repo.find()
+    result = remote.push(repo, _remote_for(repo, args.remote))
+    if result.commits == 0:
+        print("The remote already has every version.")
+    else:
+        print(f"Pushed {result.commits} version(s), {result.objects} object(s).")
+
+
+def _print_pull(repo: Repo, result) -> None:
+    if result.outcome == "up-to-date":
+        print("Already up to date.")
+        return
+    print(f"Pulled {result.commits} version(s), {result.objects} object(s).")
+    _print_changes(result.changes, locate=lambda path: repo.folder / path)
+    if result.outcome == "merge":
+        print(f"Both sides had new versions, so they were merged as v{len(repo.log())}.")
+    if result.conflicts:
+        print("Changed on both sides (both versions were kept, listen and delete one):")
+        for path in result.conflicts:
+            print(f"  ! {path}")
 
 
 def cmd_pull(args) -> None:
-    result = remote.pull(Repo.find(), remote.FolderRemote(args.remote))
-    print(f"Pulled {result.commits} version(s), {result.objects} object(s).")
+    repo = Repo.find()
+    _print_pull(repo, remote.pull(repo, _remote_for(repo, args.remote)))
+
+
+def cmd_clone(args) -> None:
+    folder = args.folder or Path(args.remote.rstrip("/")).name
+    repo, result = remote.clone(args.remote, folder, author=args.author)
+    print(f"Cloned into {repo.folder} (author: {repo.author})")
+    _print_pull(repo, result)
+
+
+def cmd_show(args) -> None:
+    repo = Repo.find()
+    html = build_report(repo, args.version)
+    out = Path(args.output) if args.output else repo.dir / "show.html"
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote {out}")
+    if not args.no_open:
+        webbrowser.open(out.resolve().as_uri())
+
+
+def cmd_verify(args) -> None:
+    repo = Repo.find()
+    problems = repo.verify()
+    if not problems:
+        print("Everything checks out: every stored file and version matches its hash.")
+        return
+    for problem in problems:
+        print(f"  ! {problem}")
+    raise KitError(f"{len(problems)} problem(s) found")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -165,13 +245,32 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("credits", help="show who first added each sound")
     p.set_defaults(run=cmd_credits)
 
-    p = sub.add_parser("push", help="send new versions to a shared folder")
-    p.add_argument("remote", type=Path)
+    p = sub.add_parser("remote", help="show or set the default remote")
+    p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
+    p.set_defaults(run=cmd_remote)
+
+    p = sub.add_parser("push", help="send new versions to a remote")
+    p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
     p.set_defaults(run=cmd_push)
 
-    p = sub.add_parser("pull", help="get new versions from a shared folder")
-    p.add_argument("remote", type=Path)
+    p = sub.add_parser("pull", help="get new versions from a remote, merging if needed")
+    p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
     p.set_defaults(run=cmd_pull)
+
+    p = sub.add_parser("clone", help="make a new kit folder from a remote (fork a pack)")
+    p.add_argument("remote", help="a folder path or s3://bucket/prefix")
+    p.add_argument("folder", nargs="?", help="where to put it (default: the remote's name)")
+    p.add_argument("--author", help="your producer name, used for credits")
+    p.set_defaults(run=cmd_clone)
+
+    p = sub.add_parser("show", help="open a version as a web page with waveforms and players")
+    p.add_argument("version", nargs="?", help="default: the latest version")
+    p.add_argument("-o", "--output", help="where to write the page (default: .kit/show.html)")
+    p.add_argument("--no-open", action="store_true", help="write the page without opening it")
+    p.set_defaults(run=cmd_show)
+
+    p = sub.add_parser("verify", help="check that nothing stored is damaged or missing")
+    p.set_defaults(run=cmd_verify)
 
     return parser
 
@@ -183,7 +282,4 @@ def main(argv=None) -> int:
     except KitError as err:
         print(f"kit: {err}", file=sys.stderr)
         return 1
-    except NotImplementedError as err:
-        print(f"kit: {err}", file=sys.stderr)
-        return 2
     return 0
