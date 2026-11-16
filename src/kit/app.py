@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
+from . import remote
 from .audio import describe
 from .audio import peaks
 from .manifest import diff
@@ -154,6 +155,29 @@ class App:
             changes = repo.restore(body.get("version", ""), force=bool(body.get("force")))
             return {"message": f"Put {len(changes)} file(s) back. Save a version to keep it this way."
                     if changes else "The folder already matches that version."}
+        if action == "remote":
+            spec = (body.get("remote") or "").strip()
+            if not spec:
+                raise KitError("type a folder path or s3://bucket/name first")
+            repo.set_remote(remote.normalize(spec))
+            return {"message": f"Remote set to {repo.remote()}"}
+        if action in ("push", "pull"):
+            if not repo.remote():
+                raise KitError("set a remote first: a shared folder or s3://bucket/name")
+            target = remote.open_remote(repo.remote())
+            if action == "push":
+                result = remote.push(repo, target)
+                return {"message": f"Pushed {result.commits} version(s)." if result.commits
+                        else "The remote already has every version."}
+            result = remote.pull(repo, target)
+            if result.outcome == "up-to-date":
+                return {"message": "Already up to date."}
+            message = f"Pulled {result.commits} version(s)."
+            if result.outcome == "merge":
+                message += " Both sides had new versions, so they were merged."
+            if result.conflicts:
+                message += (" Changed on both sides, both kept: " + ", ".join(result.conflicts))
+            return {"message": message}
         raise KitError(f"unknown action: {action}")
 
 

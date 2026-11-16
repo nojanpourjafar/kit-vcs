@@ -139,3 +139,26 @@ def test_peaks_come_back_for_wav_files_only(app, kit):
     levels = app.json("/api/peaks?path=tone.wav")["peaks"]
     assert 80 <= len(levels) <= 96 and max(levels) == 1.0
     assert app.json("/api/peaks?path=Kicks/kick_01.wav")["peaks"] is None   # not really audio
+
+
+def test_set_a_remote_then_push_and_pull(app, kit, tmp_path):
+    from kit import remote
+
+    Repo.init(kit, author="Nojan").commit("first")
+    status, body, _ = app("/api/push", {})
+    assert status == 400 and "set a remote first" in json.loads(body)["error"]
+
+    shared = tmp_path / "shared"
+    assert str(shared.resolve()) in app.json("/api/remote", {"remote": str(shared)})["message"]
+    assert app.json("/api/push", {})["message"] == "Pushed 1 version(s)."
+    assert app.json("/api/push", {})["message"] == "The remote already has every version."
+
+    fork, _ = remote.clone(str(shared), tmp_path / "fork", author="Lucas")
+    (fork.folder / "Hats" / "hat_lucas.wav").write_bytes(b"lucas hat")
+    fork.commit("a hat from Lucas")
+    remote.push(fork, remote.open_remote(str(shared)))
+
+    assert app.json("/api/pull", {})["message"] == "Pulled 1 version(s)."
+    sounds = {s["path"]: s["by"] for s in app.json("/api/state")["sounds"]}
+    assert sounds["Hats/hat_lucas.wav"] == "Lucas"
+    assert app.json("/api/pull", {})["message"] == "Already up to date."
