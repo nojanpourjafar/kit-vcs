@@ -40,6 +40,16 @@ kit credits                                  # who first added each sound
 kit show                                     # opens the version as a web page
 ```
 
+## The app
+
+If you would rather click than type, run this inside a kit folder:
+
+```
+kit ui
+```
+
+It opens Kit in your browser. The folder's sounds are listed with waveforms and play buttons, unsaved changes are marked, and there are buttons to save a version, look at or go back to an older one, and push and pull. Everything runs on your own computer: `kit ui` starts a small server that only your machine can reach, and stops when you press Ctrl+C in the terminal.
+
 ## Sharing a kit
 
 A remote is anywhere a copy of the history can live. The simplest one is a folder: a USB drive, or a folder synced by Google Drive or Dropbox.
@@ -89,7 +99,8 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit diff v1 v2` | Show what changed between two versions |
 | `kit restore v1` | Put the folder back to an earlier version |
 | `kit credits` | Show who first added each sound, and the split |
-| `kit show [v2]` | Open a version as a web page with waveforms and players |
+| `kit ui` | Open Kit as an app in your browser |
+| `kit show [v2]` | Write a version out as a single web page you can send to someone |
 | `kit remote [where]` | Show or set the default remote |
 | `kit push [where]` | Send new versions to a remote |
 | `kit pull [where]` | Get new versions from a remote, merging if needed |
@@ -137,6 +148,7 @@ The merge compares both sides with the last version they share. A file changed o
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
 - `kit status` does not re-hash files whose size and modified time are unchanged, which keeps it fast on large kits. Files modified in the last two seconds are always re-hashed.
 - Paths in a manifest that point outside the kit folder are refused, since manifests can come from other people.
+- The app's server listens on 127.0.0.1 only, requires a random token that only its own page knows, and rejects requests whose Host header is not this machine. Without those checks, any web page open in the same browser could send it commands.
 
 ## Project layout
 
@@ -151,6 +163,8 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/audio.py` | WAV length, sample rate and waveform outline |
 | `src/kit/report.py` | The `kit show` web page |
+| `src/kit/app.py` | The `kit ui` server: JSON endpoints over the same Repo methods |
+| `src/kit/ui.html` | The `kit ui` page: layout, styles and script in one file |
 | `src/kit/cli.py` | The `kit` command |
 
 ## Roadmap
@@ -162,6 +176,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Merge two people's versions, credits across people | done |
 | S3 / R2 remote | done, not yet run against a real bucket |
 | Web page with waveforms and players | done |
+| Browser app (`kit ui`) | done |
 | Hash cache, `.kitignore`, `kit verify` | done |
 | Hosted service: accounts, private and paid packs, download tracking | planned |
 | Waveforms for MP3, FLAC and float WAV files | planned |
