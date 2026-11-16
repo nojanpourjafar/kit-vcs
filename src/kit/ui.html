@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kit</title>
+<style>
+/* Colours are named once here and used everywhere below, so the dark theme
+   only has to redefine these names. */
+:root {
+  --bg: #f4f5f7; --card: #ffffff; --ink: #16181d; --muted: #5d6672; --line: #d5dae1;
+  --accent: #c2410c; --accent-ink: #ffffff;
+  --added: #15803d; --modified: #b45309; --renamed: #1d4ed8; --removed: #b91c1c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101216; --card: #191c22; --ink: #e8eaee; --muted: #9aa3ae; --line: #323944;
+    --accent: #fb923c; --accent-ink: #1a1206;
+    --added: #4ade80; --modified: #fbbf24; --renamed: #93c5fd; --removed: #f87171;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+h1 { margin: 0; font-size: 22px; line-height: 1.25; }
+h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+ul, ol { list-style: none; margin: 0; padding: 0; }
+.muted { color: var(--muted); margin: 4px 0 0; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px 20px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); }
+.brand { display: flex; align-items: baseline; gap: 10px; font-size: 17px; font-weight: 600; }
+.mark { font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--accent); }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px;
+  max-width: 1180px; margin: 0 auto; padding: 24px 20px 64px; }
+main { display: grid; gap: 24px; align-content: start; min-width: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.sounds { display: grid; gap: 8px; }
+.sound { display: flex; align-items: center; gap: 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.what { flex: 1; min-width: 0; }
+.name { font-weight: 600; overflow-wrap: anywhere; }
+.info { color: var(--muted); font-size: 13px; }
+.badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
+  border: 1px solid currentColor; font-size: 11px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; vertical-align: 1px; }
+.added { color: var(--added); } .modified { color: var(--modified); }
+.renamed { color: var(--renamed); } .removed { color: var(--removed); }
+.gone li { color: var(--muted); text-decoration: line-through; padding: 2px 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark">Kit</span><span id="kit-name"></span></div>
+</header>
+<div class="layout">
+  <main id="main"></main>
+</div>
+<script>
+// The server writes a random token into this page. Every request sends it
+// back, which is how the server knows the request came from this page.
+const TOKEN = "__KIT_TOKEN__";
+
+const $ = (selector) => document.querySelector(selector);
+
+// Build an element: h("li", {class: "sound"}, "text", otherElement).
+// Text is added as text, never as HTML, so a file name cannot inject markup.
+function h(tag, props = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (key === "class") el.className = value;
+    else if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+    else if (value !== null && value !== undefined && value !== false) el.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child !== null && child !== undefined && child !== false) el.append(child);
+  }
+  return el;
+}
+
+// Call the server. With a body it is a POST (an action), without one a GET.
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: {"X-Kit-Token": TOKEN, "Content-Type": "application/json"},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Something went wrong");
+  return data;
+}
+
+let state = null;   // the latest answer from /api/state
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const when = (time) => new Date(time).toLocaleString([], {dateStyle: "medium", timeStyle: "short"});
+
+function summary(changes) {
+  const counts = {};
+  for (const change of changes) counts[change.kind] = (counts[change.kind] || 0) + 1;
+  return Object.entries(counts).map(([kind, n]) => `${n} ${kind}`).join(", ");
+}
+
+// ---- one sound ------------------------------------------------------------
+
+function soundRow(sound) {
+  const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
+  if (sound.was) info.push(`was ${sound.was}`);
+  if (sound.info) info.push(sound.info);
+  const row = h("li", {class: "sound"});
+  row.append(h("div", {class: "what"},
+    h("div", {class: "name"}, sound.path,
+      sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
+    h("div", {class: "info"}, info.join(" · "))));
+  return row;
+}
+
+function soundSection(title, sounds) {
+  return h("section", {}, h("h2", {}, title), h("ul", {class: "sounds"}, sounds.map(soundRow)));
+}
+
+function removedSection(title, paths) {
+  if (!paths.length) return null;
+  return h("section", {}, h("h2", {}, title), h("ul", {class: "gone"}, paths.map((p) => h("li", {}, p))));
+}
+
+// ---- the "Now" screen: the folder as it is ---------------------------------
+
+function renderNow() {
+  const latest = state.versions[0];
+  const count = state.changes.length;
+  const box = h("section", {class: "card"});
+  if (count) {
+    box.append(h("h1", {}, plural(count, "unsaved change")), h("p", {class: "muted"}, summary(state.changes)));
+  } else {
+    box.append(h("h1", {}, latest ? `Everything is saved in ${latest.label}` : "Nothing saved yet"));
+    if (!state.sounds.length) {
+      box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
+    }
+  }
+  const parts = [box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds),
+    removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];
+  $("#main").replaceChildren(...parts.filter(Boolean));
+}
+
+function renderStart() {
+  const box = h("section", {class: "card"},
+    h("h1", {}, `${state.name} is not tracked by Kit yet`),
+    h("p", {class: "muted"}, state.folder));
+  $("#main").replaceChildren(box);
+}
+
+function render() {
+  document.title = `${state.name} · Kit`;
+  $("#kit-name").textContent = state.name;
+  if (!state.repo) return renderStart();
+  renderNow();
+}
+
+async function refresh() {
+  try {
+    state = await api("/api/state");
+    render();
+  } catch (error) {
+    $("#main").replaceChildren(h("p", {class: "muted"}, error.message));
+  }
+}
+
+
+// Coming back to this window redraws it, so sounds added in Finder show up.
+window.addEventListener("focus", refresh);
+refresh();
+</script>
+</body>
+</html>

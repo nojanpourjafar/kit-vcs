@@ -177,6 +177,10 @@ class Repo:
 
     # ---- the commands ----------------------------------------------------
 
+    def working(self) -> Manifest:
+        """The folder as it is right now, saved or not."""
+        return self._scan()
+
     def status(self) -> list[Change]:
         """What changed in the folder since the latest saved version."""
         return diff(self.manifest_of(self.head()), self._scan())

@@ -199,6 +199,12 @@ def cmd_show(args) -> None:
         webbrowser.open(out.resolve().as_uri())
 
 
+def cmd_ui(args) -> None:
+    from .app import serve  # imported here so the other commands start instantly
+
+    serve(args.folder, port=args.port, open_browser=not args.no_open)
+
+
 def cmd_verify(args) -> None:
     repo = Repo.find()
     problems = repo.verify()
@@ -268,6 +274,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-o", "--output", help="where to write the page (default: .kit/show.html)")
     p.add_argument("--no-open", action="store_true", help="write the page without opening it")
     p.set_defaults(run=cmd_show)
+
+    p = sub.add_parser("ui", help="open Kit as an app in your browser")
+    p.add_argument("folder", nargs="?", default=".", help="the kit folder (default: this one)")
+    p.add_argument("--port", type=int, default=0, help="port to use (default: any free port)")
+    p.add_argument("--no-open", action="store_true", help="start without opening the browser")
+    p.set_defaults(run=cmd_ui)
 
     p = sub.add_parser("verify", help="check that nothing stored is damaged or missing")
     p.set_defaults(run=cmd_verify)
