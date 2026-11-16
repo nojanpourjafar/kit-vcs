@@ -14,6 +14,7 @@ browser, three checks guard it:
 from __future__ import annotations
 
 import json
+import mimetypes
 import secrets
 import threading
 import webbrowser
@@ -22,6 +23,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from .audio import describe
+from .audio import peaks
 from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author
 
@@ -38,6 +40,7 @@ class App:
             self.folder = Path(folder).resolve()  # not a repo yet; the page will say so
         self.token = secrets.token_urlsafe(16)
         self.lock = threading.RLock()  # one action at a time
+        self._peaks: dict[str, list[float] | None] = {}
 
     def repo(self) -> Repo:
         if not (self.folder / DIR).is_dir():
@@ -114,6 +117,27 @@ class App:
                 "since": labels.get(credit.id, credit.id[:8]) if credit else None,
             })
         return sounds
+
+    def locate(self, query: dict) -> tuple[Path, str]:
+        """The file behind an audio or waveform request, and its real name."""
+        repo = self.repo()
+        if "hash" in query:
+            return repo.store.path_for(query["hash"]), query.get("name", "")
+        rel = query.get("path", "")
+        if any(part.startswith(".") for part in rel.split("/")):
+            raise KitError("no such sound")  # never serve .kit or other hidden files
+        path = repo._safe_path(rel)
+        if not path.is_file():
+            raise KitError("no such sound")
+        return path, rel
+
+    def peaks(self, query: dict) -> list[float] | None:
+        path, name = self.locate(query)
+        stat = path.stat()
+        key = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if key not in self._peaks:
+            self._peaks[key] = peaks(path, name)
+        return self._peaks[key]
 
     # ---- actions ---------------------------------------------------------
 
@@ -195,6 +219,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(self.app.state)
         if url.path == "/api/version":
             return self._run(lambda: self.app.version(query.get("ref", "latest")))
+        if url.path == "/api/peaks":
+            return self._run(lambda: {"peaks": self.app.peaks(query)})
+        if url.path == "/api/audio":
+            return self._audio(query)
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -207,6 +235,38 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json(400, {"error": "bad request"})
         self._run(lambda: self.app.act(url.path[len("/api/"):], body))
+
+    def _audio(self, query: dict) -> None:
+        """Send a sound. Safari will not play audio unless byte ranges are supported."""
+        try:
+            path, name = self.app.locate(query)
+            size = path.stat().st_size
+        except (KitError, ValueError, OSError):
+            return self._json(404, {"error": "no such sound"})
+        start, end = 0, size - 1
+        header = self.headers.get("Range") or ""
+        partial = header.startswith("bytes=")
+        if partial:
+            first, _, last = header[len("bytes="):].split(",")[0].partition("-")
+            try:
+                if first:
+                    start, end = int(first), int(last) if last else size - 1
+                else:  # "bytes=-500" means the last 500 bytes
+                    start = max(0, size - int(last))
+            except ValueError:
+                partial = False
+            end = min(end, size - 1)
+            if start > end:
+                return self._send(416, b"", "text/plain", {"Content-Range": f"bytes */{size}"})
+        with open(path, "rb") as f:
+            f.seek(start)
+            data = f.read(end - start + 1)
+        kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        extra = {"Accept-Ranges": "bytes"}
+        if partial:
+            extra["Content-Range"] = f"bytes {start}-{end}/{size}"
+        self._send(206 if partial else 200, data, kind, extra)
+
 
 def make_server(folder, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
     """Build the server without starting it. Port 0 picks any free port."""

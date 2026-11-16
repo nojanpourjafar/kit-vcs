@@ -97,3 +97,45 @@ def test_problems_come_back_as_messages_not_crashes(app, kit):
     assert status == 400 and "needs a message" in json.loads(body)["error"]
     assert app("/api/nonsense", {})[0] == 400
     assert app("/api/commit", {"message": "x"}, token="guess")[0] == 403
+
+
+def test_audio_is_served_whole_or_in_byte_ranges(app, kit):
+    repo = Repo.init(kit)
+    repo.commit("first")
+    data = (kit / "Kicks" / "kick_01.wav").read_bytes()
+    url = f"/api/audio?path=Kicks/kick_01.wav&t={app.token}"   # the token rides in the address
+
+    status, body, headers = app(url, token="")
+    assert (status, body, headers["Accept-Ranges"]) == (200, data, "bytes")
+
+    status, body, headers = app(url, token="", headers={"Range": "bytes=4-7"})
+    assert (status, body) == (206, data[4:8])
+    assert headers["Content-Range"] == f"bytes 4-7/{len(data)}"
+    assert app(url, token="", headers={"Range": "bytes=-4"})[1] == data[-4:]
+
+    digest = repo.manifest_of(repo.head())["Kicks/kick_01.wav"]["hash"]
+    assert app(f"/api/audio?hash={digest}&name=kick_01.wav")[1] == data   # a saved version, by hash
+
+
+def test_hidden_files_and_paths_outside_the_folder_are_never_served(app, kit):
+    Repo.init(kit)
+    (kit.parent / "secret.wav").write_bytes(b"private")
+    for target in ("path=.kit/config.json", "path=../secret.wav", "path=/etc/passwd", "hash=../../x"):
+        assert app(f"/api/audio?{target}")[0] == 404
+        assert app(f"/api/peaks?{target}")[0] == 400
+
+
+def test_peaks_come_back_for_wav_files_only(app, kit):
+    import struct
+    import wave
+
+    Repo.init(kit)
+    with wave.open(str(kit / "tone.wav"), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(8000)
+        wav.writeframes(b"".join(struct.pack("<h", s) for s in [12000, -12000] * 500))
+
+    levels = app.json("/api/peaks?path=tone.wav")["peaks"]
+    assert 80 <= len(levels) <= 96 and max(levels) == 1.0
+    assert app.json("/api/peaks?path=Kicks/kick_01.wav")["peaks"] is None   # not really audio

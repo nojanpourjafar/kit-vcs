@@ -72,6 +72,20 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
 #toast.show { opacity: 1; }
 #toast.bad { background: var(--removed); color: #fff; }
 @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.play { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; }
+/* The play triangle and the pause bars are drawn with borders, so no icon files are needed. */
+.play::before { content: ""; margin-left: 3px; border-style: solid; border-width: 7px 0 7px 11px;
+  border-color: transparent transparent transparent currentColor; }
+.playing .play::before { margin: 0; width: 4px; height: 13px; border-width: 0 4px;
+  border-color: currentColor; }
+.wave { flex: none; position: relative; width: 240px; height: 44px; color: var(--accent); cursor: pointer; }
+.wave svg { width: 100%; height: 100%; display: block; fill: currentColor; }
+.wave.empty { color: var(--muted); font-size: 12px; display: grid; place-items: center; cursor: default; }
+/* The playhead: a thin line whose position follows --progress (0 to 1), set from the script. */
+.sound.playing .wave::after, .sound.started .wave::after { content: ""; position: absolute; top: 0; bottom: 0;
+  width: 2px; background: var(--ink); left: calc(var(--progress, 0) * 100%); }
+@media (max-width: 760px) { .wave { width: 120px; } }
 </style>
 </head>
 <body>
@@ -137,10 +151,12 @@ function soundRow(sound) {
   if (sound.was) info.push(`was ${sound.was}`);
   if (sound.info) info.push(sound.info);
   const row = h("li", {class: "sound"});
+  row.append(playButton(row, sound));
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
     h("div", {class: "info"}, info.join(" · "))));
+  row.append(waveBox(row, sound));
   return row;
 }
 
@@ -277,6 +293,89 @@ async function renderVersion(id) {
   }
   $("#main").replaceChildren(...[box, soundSection(`Sounds in ${version.label}`, version.sounds),
     removedSection(`Removed in ${version.label}`, version.removed)].filter(Boolean));
+}
+
+// ---- sound: one shared player, and waveforms drawn on demand --------------------
+
+const player = new Audio();
+let current = null;  // the row that is playing or paused
+
+function playButton(row, sound) {
+  return h("button", {class: "play", "aria-label": `Play ${sound.path}`, onclick: () => toggle(row, sound)});
+}
+
+function toggle(row, sound) {
+  if (current === row) {
+    if (player.paused) player.play(); else player.pause();
+    return;
+  }
+  if (current) current.classList.remove("playing", "started");
+  current = row;
+  row.style.setProperty("--progress", 0);
+  row.classList.add("started");
+  // An <audio> request cannot carry our header, so the token rides in the address.
+  player.src = `/api/audio?${sound.source}&t=${TOKEN}`;
+  player.play().catch(() => toast("The browser cannot play this kind of file.", true));
+}
+
+player.addEventListener("play", () => current && current.classList.add("playing"));
+player.addEventListener("pause", () => current && current.classList.remove("playing"));
+player.addEventListener("ended", () => current && current.classList.remove("started"));
+player.addEventListener("timeupdate", () => {
+  if (current && player.duration) current.style.setProperty("--progress", player.currentTime / player.duration);
+});
+
+// A waveform is only fetched when its row scrolls near the screen, so a kit
+// with a thousand sounds does not read a thousand files up front.
+const nearScreen = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    nearScreen.unobserve(entry.target);
+    drawWave(entry.target);
+  }
+}, {rootMargin: "300px"});
+
+function waveBox(row, sound) {
+  const box = h("div", {class: "wave", onclick: (event) => seek(row, sound, event)});
+  box.dataset.source = sound.source;
+  nearScreen.observe(box);
+  return box;
+}
+
+async function drawWave(box) {
+  let peaks = null;
+  try {
+    peaks = (await api(`/api/peaks?${box.dataset.source}`)).peaks;
+  } catch (error) { /* leave it empty */ }
+  if (!peaks || !peaks.length) {
+    box.classList.add("empty");
+    box.textContent = "no waveform";
+    return;
+  }
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", "0 0 240 44");
+  svg.setAttribute("preserveAspectRatio", "none");
+  const step = 240 / peaks.length;
+  peaks.forEach((level, i) => {
+    const bar = document.createElementNS(svgNS, "rect");  // one bar per slice, mirrored around the middle
+    bar.setAttribute("x", i * step);
+    bar.setAttribute("y", 22 - Math.max(level * 20, 0.6));
+    bar.setAttribute("width", Math.max(step - 0.8, 0.6));
+    bar.setAttribute("height", Math.max(level * 40, 1.2));
+    svg.append(bar);
+  });
+  box.append(svg);
+}
+
+// Clicking a waveform starts that sound and jumps to the clicked position.
+function seek(row, sound, event) {
+  const box = event.currentTarget;
+  if (box.classList.contains("empty")) return;
+  const share = (event.clientX - box.getBoundingClientRect().left) / box.offsetWidth;
+  if (current !== row) toggle(row, sound);
+  const jump = () => { if (player.duration) player.currentTime = share * player.duration; };
+  if (player.readyState >= 1) jump(); else player.addEventListener("loadedmetadata", jump, {once: true});
 }
 
 
