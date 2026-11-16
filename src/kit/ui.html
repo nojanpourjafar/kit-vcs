@@ -48,6 +48,30 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .added { color: var(--added); } .modified { color: var(--modified); }
 .renamed { color: var(--renamed); } .removed { color: var(--removed); }
 .gone li { color: var(--muted); text-decoration: line-through; padding: 2px 0; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--card);
+  border-radius: 8px; padding: 7px 14px; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg);
+  border-radius: 8px; padding: 7px 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.layout { grid-template-columns: 270px minmax(0, 1fr); }
+#history { display: grid; gap: 4px; }
+#history button { display: grid; gap: 1px; width: 100%; text-align: left; border-color: transparent;
+  background: none; padding: 8px 10px; }
+#history button:hover { background: var(--card); }
+#history button.here { background: var(--card); border-color: var(--line); }
+#history span { font-size: 13px; overflow-wrap: anywhere; }
+#history small { color: var(--muted); font-size: 12px; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: min(560px, 90vw);
+  background: var(--ink); color: var(--bg); border-radius: 10px; padding: 10px 16px;
+  opacity: 0; pointer-events: none; transition: opacity .2s; }
+#toast.show { opacity: 1; }
+#toast.bad { background: var(--removed); color: #fff; }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body>
@@ -55,8 +79,10 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
   <div class="brand"><span class="mark">Kit</span><span id="kit-name"></span></div>
 </header>
 <div class="layout">
+  <aside><h2>History</h2><ol id="history"></ol></aside>
   <main id="main"></main>
 </div>
+<div id="toast" role="status"></div>
 <script>
 // The server writes a random token into this page. Every request sends it
 // back, which is how the server knows the request came from this page.
@@ -92,6 +118,8 @@ async function api(path, body) {
 }
 
 let state = null;   // the latest answer from /api/state
+let view = "now";
+let draft = "";
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const when = (time) => new Date(time).toLocaleString([], {dateStyle: "medium", timeStyle: "short"});
@@ -133,6 +161,7 @@ function renderNow() {
   const box = h("section", {class: "card"});
   if (count) {
     box.append(h("h1", {}, plural(count, "unsaved change")), h("p", {class: "muted"}, summary(state.changes)));
+    box.append(saveForm());
   } else {
     box.append(h("h1", {}, latest ? `Everything is saved in ${latest.label}` : "Nothing saved yet"));
     if (!state.sounds.length) {
@@ -148,6 +177,11 @@ function renderStart() {
   const box = h("section", {class: "card"},
     h("h1", {}, `${state.name} is not tracked by Kit yet`),
     h("p", {class: "muted"}, state.folder));
+  const author = h("input", {type: "text", id: "author", "aria-label": "Your producer name", value: state.author});
+  box.append(h("form", {class: "row", onsubmit: (event) => {
+    event.preventDefault();
+    act("init", {author: author.value}, event.submitter);
+  }}, author, h("button", {class: "primary"}, "Start tracking this folder")));
   $("#main").replaceChildren(box);
 }
 
@@ -155,6 +189,8 @@ function render() {
   document.title = `${state.name} · Kit`;
   $("#kit-name").textContent = state.name;
   if (!state.repo) return renderStart();
+  renderHistory();
+  if (view !== "now") return renderVersion(view);
   renderNow();
 }
 
@@ -165,6 +201,82 @@ async function refresh() {
   } catch (error) {
     $("#main").replaceChildren(h("p", {class: "muted"}, error.message));
   }
+}
+
+// ---- actions: save, restore, start ------------------------------------------
+
+function toast(text, bad = false) {
+  const el = $("#toast");
+  el.textContent = text;
+  el.className = bad ? "show bad" : "show";
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { el.className = ""; }, bad ? 7000 : 4000);
+}
+
+// Run an action on the server, show what it said, then redraw from fresh state.
+async function act(name, body, button) {
+  if (button) button.disabled = true;
+  try {
+    const result = await api(`/api/${name}`, body || {});
+    toast(result.message);
+    view = "now";
+    if (name === "commit") draft = "";
+    await refresh();
+    return true;
+  } catch (error) {
+    toast(error.message, true);
+    return false;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function saveForm() {
+  // `draft` keeps what was typed, because the page redraws when the window regains focus.
+  const message = h("input", {type: "text", "aria-label": "What changed",
+    placeholder: "What changed? For example: added 5 hats", value: draft,
+    oninput: (event) => { draft = event.target.value; }});
+  return h("form", {class: "row", onsubmit: (event) => {
+    event.preventDefault();
+    act("commit", {message: message.value}, event.submitter);
+  }}, message, h("button", {class: "primary"}, "Save version"));
+}
+
+// ---- history and saved versions ----------------------------------------------
+
+function historyItem(id, label, text, sub) {
+  return h("li", {}, h("button", {class: view === id ? "here" : "", onclick: () => { view = id; render(); }},
+    h("strong", {}, label), h("span", {}, text), sub && h("small", {}, sub)));
+}
+
+function renderHistory() {
+  const count = state.changes.length;
+  $("#history").replaceChildren(
+    historyItem("now", "Now", count ? plural(count, "unsaved change") : "everything saved"),
+    ...state.versions.map((v) => historyItem(v.id, v.label, `${v.author}: ${v.message}`, when(v.time))));
+}
+
+async function renderVersion(id) {
+  let version;
+  try {
+    version = await api(`/api/version?ref=${id}`);
+  } catch (error) {
+    toast(error.message, true);
+    view = "now";
+    return render();
+  }
+  if (view !== id) return;  // another version was clicked while this one loaded
+  const box = h("section", {class: "card"},
+    h("h1", {}, `${version.label}: ${version.message}`),
+    h("p", {class: "muted"},
+      `${version.author} · ${when(version.time)} · ${plural(version.sounds.length, "sound")}`));
+  if (!version.latest) {
+    box.append(h("div", {class: "row"}, h("button", {class: "primary",
+      onclick: (event) => act("restore", {version: version.id}, event.currentTarget)},
+      `Put the folder back to ${version.label}`)));
+  }
+  $("#main").replaceChildren(...[box, soundSection(`Sounds in ${version.label}`, version.sounds),
+    removedSection(`Removed in ${version.label}`, version.removed)].filter(Boolean));
 }
 
 

@@ -74,3 +74,26 @@ def test_requests_for_another_host_are_refused(app):
     # The browser then sends that domain in the Host header, which gives it away.
     assert app("/api/state", headers={"Host": "evil.example"})[0] == 403
     assert app("/", headers={"Host": "evil.example"})[0] == 403
+
+
+def test_start_save_and_restore_from_the_page(app, kit):
+    assert app.json("/api/init", {"author": "Nojan"})["message"]
+    assert app.json("/api/state")["repo"] is True
+    assert app.json("/api/commit", {"message": "first"})["message"] == "Saved v1: first"
+
+    (kit / "Hats" / "hat_01.wav").write_bytes(b"brighter")
+    app.json("/api/commit", {"message": "brighter hat"})
+    first = app.json("/api/version?ref=v1")
+    assert first["latest"] is False and len(first["sounds"]) == 3
+    assert app.json("/api/version?ref=v2")["sounds"][0]["change"] == "modified"
+
+    app.json("/api/restore", {"version": first["id"]})
+    assert (kit / "Hats" / "hat_01.wav").read_bytes() == b"TSS" * 100
+
+
+def test_problems_come_back_as_messages_not_crashes(app, kit):
+    Repo.init(kit)
+    status, body, _ = app("/api/commit", {"message": ""})
+    assert status == 400 and "needs a message" in json.loads(body)["error"]
+    assert app("/api/nonsense", {})[0] == 400
+    assert app("/api/commit", {"message": "x"}, token="guess")[0] == 403

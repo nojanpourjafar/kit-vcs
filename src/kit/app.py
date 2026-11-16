@@ -75,6 +75,25 @@ class App:
             "removed": [c.path for c in changes if c.kind == "removed"],
         }
 
+    def version(self, ref: str) -> dict:
+        """Everything the screen for one saved version shows."""
+        repo = self.repo()
+        history = repo.log()
+        labels = {c.id: f"v{len(history) - i}" for i, c in enumerate(history)}
+        commit = repo.load_commit(repo.resolve(ref))
+        manifest = repo.manifest_of(commit.id)
+        changes = diff(repo.manifest_of(commit.parent), manifest)
+        by_hash = {manifest[path]["hash"]: c for path, c in repo.credits(commit.id).items()}
+        return {
+            "label": labels.get(commit.id, commit.id[:8]),
+            "id": commit.id, "author": commit.author, "message": commit.message,
+            "time": commit.time, "latest": commit.id == repo.head(),
+            "sounds": self._sounds(manifest, changes, by_hash, labels,
+                                   locate=lambda path, entry: repo.store.path_for(entry["hash"]),
+                                   key="hash"),
+            "removed": [c.path for c in changes if c.kind == "removed"],
+        }
+
     def _sounds(self, manifest, changes, by_hash, labels, locate, key) -> list[dict]:
         changed = {c.path: c for c in changes if c.kind != "removed"}
         sounds = []
@@ -95,6 +114,23 @@ class App:
                 "since": labels.get(credit.id, credit.id[:8]) if credit else None,
             })
         return sounds
+
+    # ---- actions ---------------------------------------------------------
+
+    def act(self, action: str, body: dict) -> dict:
+        """Run one action from the page and say what happened."""
+        if action == "init":
+            Repo.init(self.folder, author=(body.get("author") or "").strip() or None)
+            return {"message": "Started tracking this folder."}
+        repo = self.repo()
+        if action == "commit":
+            saved = repo.commit(body.get("message", ""))
+            return {"message": f"Saved v{len(repo.log())}: {saved.commit.message}"}
+        if action == "restore":
+            changes = repo.restore(body.get("version", ""), force=bool(body.get("force")))
+            return {"message": f"Put {len(changes)} file(s) back. Save a version to keep it this way."
+                    if changes else "The folder already matches that version."}
+        raise KitError(f"unknown action: {action}")
 
 
 def _quote(text: str) -> str:
@@ -157,7 +193,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(403, {"error": "forbidden"})
         if url.path == "/api/state":
             return self._run(self.app.state)
+        if url.path == "/api/version":
+            return self._run(lambda: self.app.version(query.get("ref", "latest")))
         self._json(404, {"error": "not found"})
+
+    def do_POST(self) -> None:
+        url = urlparse(self.path)
+        if not self._allowed({}) or not url.path.startswith("/api/"):
+            return self._json(403, {"error": "forbidden"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            return self._json(400, {"error": "bad request"})
+        self._run(lambda: self.app.act(url.path[len("/api/"):], body))
 
 def make_server(folder, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
     """Build the server without starting it. Port 0 picks any free port."""
