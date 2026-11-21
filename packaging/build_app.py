@@ -25,11 +25,14 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 PAGE = ROOT / "src" / "kit" / "ui.html"
+# Each system wants its own icon format; make_icon.py draws all of them.
+ICON = ROOT / "packaging" / {"darwin": "Kit.icns", "win32": "Kit.ico"}.get(sys.platform, "icon.png")
 
 PyInstaller.__main__.run([
     str(ROOT / "packaging" / "kit_app.py"),
     "--name", "Kit",
     "--windowed",                 # no Terminal window alongside the app
+    "--icon", str(ICON),
     "--noconfirm",                # overwrite the previous build
     "--paths", str(ROOT / "src"),
     "--add-data", f"{PAGE}{os.pathsep}kit",   # app.py looks for ui.html beside itself

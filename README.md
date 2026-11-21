@@ -191,6 +191,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/desktop.py` | `kit app`: the page in a native window, with a folder chooser |
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
+| `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
 
 ## Roadmap
 
