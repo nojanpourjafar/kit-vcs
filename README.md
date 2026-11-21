@@ -207,6 +207,8 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/dragout_mac.py` | Dragging a sound out of the window on macOS (PyObjC) |
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
+| `scripts/release.py` | Publishes a new version (`make release`) |
+| `Makefile` | Short commands for common tasks |
 | `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
 
 ## Roadmap
@@ -237,6 +239,15 @@ python -m pytest
 ```
 
 The S3 tests run only when `boto3` and `moto` are installed (`pip install boto3 moto`).
+
+Common tasks have short commands; run `make` to list them:
+
+```
+make test                    # run the tests
+make app                     # open Kit in its own window
+make build                   # build the double-click app into dist/
+make release VERSION=0.6.0   # test, set the version, commit, tag and push; GitHub builds the apps
+```
 
 GitHub runs the same tests on macOS, Windows and Linux, with Python 3.10 and 3.13, on every push (`.github/workflows/tests.yml`).
 
