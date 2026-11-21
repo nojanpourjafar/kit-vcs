@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import names, remote, tags
 from .audio import describe
-from .audio import peaks
+from .audio import peaks, tempo
 from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author
 
@@ -73,6 +73,7 @@ class App:
         self.token = secrets.token_urlsafe(16)
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
+        self._tempo: dict[str, float | None] = {}
         if folder is not None:
             if not Path(folder).is_dir():
                 raise KitError(f"there is no folder at {folder}")
@@ -207,6 +208,15 @@ class App:
             self._peaks[key] = peaks(path, name)
         return self._peaks[key]
 
+    def tempo(self, query: dict) -> float | None:
+        """A loop's tempo estimated from its audio (about 0.2 s of work, so it is remembered)."""
+        path, name = self.locate(query)
+        stat = path.stat()
+        key = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if key not in self._tempo:
+            self._tempo[key] = tempo(path, name)
+        return self._tempo[key]
+
     # ---- actions ---------------------------------------------------------
 
     def act(self, action: str, body: dict) -> dict:
@@ -302,10 +312,17 @@ class Handler(BaseHTTPRequestHandler):
         token = self.headers.get("X-Kit-Token") or query.get("t", "")
         return secrets.compare_digest(token, self.app.token)
 
-    def _run(self, work) -> None:
-        """Run an endpoint, turning problems into a JSON error the page can show."""
+    def _run(self, work, lock: bool = True) -> None:
+        """Run an endpoint, turning problems into a JSON error the page can show.
+
+        Actions take the lock so only one runs at a time. Slow read-only work
+        (tempo) can skip it, so it never holds up saving or the other requests.
+        """
         try:
-            with self.app.lock:
+            if lock:
+                with self.app.lock:
+                    self._json(200, work())
+            else:
                 self._json(200, work())
         except KitError as err:
             self._json(400, {"error": str(err)})
@@ -333,6 +350,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(self.app.state)
         if url.path == "/api/version":
             return self._run(lambda: self.app.version(query.get("ref", "latest")))
+        if url.path == "/api/tempo":
+            return self._run(lambda: {"bpm": self.app.tempo(query)}, lock=False)
         if url.path == "/api/peaks":
             return self._run(lambda: {"peaks": self.app.peaks(query)})
         if url.path == "/api/audio":

@@ -568,15 +568,37 @@ const nearScreen = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     if (!entry.isIntersecting) continue;
     nearScreen.unobserve(entry.target);
-    drawWave(entry.target);
+    entry.target.load();
   }
 }, {rootMargin: "300px"});
 
 function waveBox(row, sound) {
   const box = h("div", {class: "wave", onclick: (event) => seek(row, sound, event)});
   box.dataset.source = sound.source;
+  box.load = () => {  // called once the row is near the screen
+    drawWave(box);
+    if (!sound.bpm) detectTempo(row, sound);
+  };
   nearScreen.observe(box);
   return box;
+}
+
+// A loop with no tempo in its name gets one estimated from its audio, in the
+// background. It is shown as "≈140 BPM" because it is an estimate: when it is
+// off, it is most often by half or double.
+async function detectTempo(row, sound) {
+  let bpm = null;
+  try {
+    bpm = (await api(`/api/tempo?${sound.source}`)).bpm;
+  } catch (error) {
+    return;
+  }
+  if (!bpm || !row.isConnected) return;  // no clear beat, or the screen was redrawn meanwhile
+  const shown = Math.round(bpm);
+  row.querySelector(".info").append(` · ≈${shown} BPM`);
+  row.dataset.search += ` | ${shown} | ${shown}bpm`;
+  const none = row.closest("section").querySelector(".none");
+  if (none) filter(row.parentElement, none);  // it may match the search now
 }
 
 async function drawWave(box) {
