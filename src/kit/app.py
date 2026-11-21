@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import secrets
+import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,21 +31,61 @@ from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author
 
 PAGE = Path(__file__).with_name("ui.html")
+MAX_RECENT = 12
+
+
+def config_dir() -> Path:
+    """Where the app keeps its own small settings, outside any kit folder."""
+    if os.environ.get("KIT_CONFIG_DIR"):  # lets the tests use a throwaway folder
+        return Path(os.environ["KIT_CONFIG_DIR"])
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA") or Path.home()) / "Kit"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Kit"
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "kit"
 
 
 class App:
     """The state behind the page: one kit folder, and the actions on it."""
 
-    def __init__(self, folder):
-        try:
-            self.folder = Repo.find(folder).folder
-        except KitError:
-            self.folder = Path(folder).resolve()  # not a repo yet; the page will say so
+    def __init__(self, folder=None):
+        self.folder: Path | None = None  # None means the home screen: no kit is open
         self.token = secrets.token_urlsafe(16)
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
+        if folder is not None:
+            if not Path(folder).is_dir():
+                raise KitError(f"there is no folder at {folder}")
+            self.open(folder)
+
+    def open(self, folder) -> None:
+        """Switch to a kit folder and remember it for the home screen."""
+        try:
+            self.folder = Repo.find(folder).folder  # a subfolder opens the kit it belongs to
+        except KitError:
+            self.folder = Path(folder).resolve()  # not a repo yet; the page will say so
+        recent = [str(self.folder)] + [path for path in self._recent_paths() if path != str(self.folder)]
+        try:
+            config_dir().mkdir(parents=True, exist_ok=True)
+            (config_dir() / "recent.json").write_text(json.dumps(recent[:MAX_RECENT]))
+        except OSError:
+            pass  # the list of recent kits is a convenience, never a reason to fail
+
+    def _recent_paths(self) -> list[str]:
+        try:
+            paths = json.loads((config_dir() / "recent.json").read_text())
+        except (OSError, ValueError):
+            return []
+        return [path for path in paths if isinstance(path, str)] if isinstance(paths, list) else []
+
+    def recent(self) -> list[dict]:
+        """Kits opened before, newest first, leaving out folders that no longer exist."""
+        return [{"name": Path(path).name, "folder": path, "tracked": (Path(path) / DIR).is_dir()}
+                for path in self._recent_paths() if Path(path).is_dir()]
 
     def repo(self) -> Repo:
+        if self.folder is None:
+            raise KitError("open a kit folder first")
         if not (self.folder / DIR).is_dir():
             raise KitError("this folder is not a Kit repo yet")
         return Repo(self.folder)
@@ -51,7 +93,9 @@ class App:
     # ---- reading ---------------------------------------------------------
 
     def state(self) -> dict:
-        """Everything the "Now" screen shows."""
+        """Everything the "Now" screen shows, or the home screen when no kit is open."""
+        if self.folder is None:
+            return {"home": True, "recent": self.recent()}
         if not (self.folder / DIR).is_dir():
             return {"repo": False, "name": self.folder.name, "folder": str(self.folder),
                     "author": _default_author()}
@@ -144,6 +188,20 @@ class App:
 
     def act(self, action: str, body: dict) -> dict:
         """Run one action from the page and say what happened."""
+        if action == "open":
+            text = (body.get("folder") or "").strip()
+            if not text:
+                raise KitError("choose a folder first")
+            folder = Path(text).expanduser()
+            if not folder.is_dir():
+                raise KitError(f"there is no folder at {folder}")
+            self.open(folder)
+            return {"message": f"Opened {self.folder.name}"}
+        if action == "close":
+            self.folder = None
+            return {"message": ""}
+        if self.folder is None:
+            raise KitError("open a kit folder first")
         if action == "init":
             Repo.init(self.folder, author=(body.get("author") or "").strip() or None)
             return {"message": "Started tracking this folder."}
@@ -292,8 +350,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send(206 if partial else 200, data, kind, extra)
 
 
-def make_server(folder, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
-    """Build the server without starting it. Port 0 picks any free port."""
+def make_server(folder=None, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
+    """Build the server without starting it. Port 0 picks any free port.
+
+    With no folder the app starts on its home screen, which is what the
+    double-click app does: there is no "current folder" to assume.
+    """
     app = App(folder)
     handler = type("KitHandler", (Handler,), {"app": app})
     return ThreadingHTTPServer(("127.0.0.1", port), handler), app
@@ -302,7 +364,7 @@ def make_server(folder, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
 def serve(folder=".", port: int = 0, open_browser: bool = True) -> None:
     server, app = make_server(folder, port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
-    print(f"Kit is running for {app.folder}")
+    print(f"Kit is running for {app.folder or 'your kits'}")
     print(f"Open {url}  (press Ctrl+C here to stop)")
     if open_browser:
         webbrowser.open(url)

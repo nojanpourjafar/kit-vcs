@@ -29,7 +29,11 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 .muted { color: var(--muted); margin: 4px 0 0; }
 .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 10px 20px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); }
-.brand { display: flex; align-items: baseline; gap: 10px; font-size: 17px; font-weight: 600; }
+.brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; }
+#btn-home { font-size: 13px; font-weight: 400; padding: 4px 10px; margin-left: 6px; }
+.kits { display: grid; gap: 8px; margin-top: 16px; }
+.kits button { display: grid; gap: 1px; width: 100%; text-align: left; padding: 10px 14px; }
+.kits small { color: var(--muted); overflow-wrap: anywhere; }
 .mark { font: 700 12px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: .1em;
   text-transform: uppercase; color: var(--accent); }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px;
@@ -71,6 +75,7 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
   opacity: 0; pointer-events: none; transition: opacity .2s; }
 #toast.show { opacity: 1; }
 #toast.bad { background: var(--removed); color: #fff; }
+.layout.single { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
 @media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 .play { flex: none; width: 34px; height: 34px; padding: 0; border-radius: 50%;
   display: grid; place-items: center; }
@@ -90,7 +95,7 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
 #remote-label { color: var(--muted); font-size: 13px; max-width: 320px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 #remote-form { display: flex; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
-#remote-form[hidden] { display: none; }
+[hidden] { display: none !important; }  /* `hidden` must win over display: flex and grid */
 .split { display: flex; height: 12px; border-radius: 999px; overflow: hidden; gap: 2px; margin-bottom: 10px; }
 .split span { background: var(--accent); }
 .split span:nth-child(2n) { background: var(--renamed); }
@@ -100,7 +105,8 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="mark">Kit</span><span id="kit-name"></span></div>
+  <div class="brand"><span class="mark">Kit</span><span id="kit-name"></span>
+    <button id="btn-home" hidden>All kits</button></div>
   <div class="actions" hidden>
     <span id="remote-label"></span>
     <button id="btn-remote">Set remote</button>
@@ -222,10 +228,40 @@ function renderStart() {
   $("#main").replaceChildren(box);
 }
 
+// ---- the home screen: pick a kit --------------------------------------------
+
+function renderHome() {
+  const box = h("section", {class: "card"}, h("h1", {}, "Your kits"));
+  if (state.recent.length) {
+    box.append(h("div", {class: "kits"}, state.recent.map((kit) =>
+      h("button", {onclick: (event) => act("open", {folder: kit.folder}, event.currentTarget)},
+        h("strong", {}, kit.name), h("small", {}, kit.folder)))));
+  } else {
+    box.append(h("p", {class: "muted"}, "No kits yet. Open a folder of sounds to start."));
+  }
+  const path = h("input", {type: "text", "aria-label": "Folder path",
+    placeholder: "Path of a kit folder, like ~/Music/MyDrumKit"});
+  box.append(h("form", {class: "row", onsubmit: (event) => {
+    event.preventDefault();
+    act("open", {folder: path.value}, event.submitter);
+  }}, path, h("button", {class: "primary"}, "Open folder")));
+  $("#main").replaceChildren(box);
+}
+
 function render() {
-  document.title = `${state.name} · Kit`;
-  $("#kit-name").textContent = state.name;
-  $(".actions").hidden = !state.repo;
+  const home = Boolean(state.home);
+  document.title = home ? "Kit" : `${state.name} · Kit`;
+  $("#kit-name").textContent = home ? "" : state.name;
+  $("#btn-home").hidden = home;
+  $("aside").hidden = home || !state.repo;
+  $(".layout").classList.toggle("single", home || !state.repo);
+  $(".actions").hidden = home || !state.repo;
+  if (home) {
+    view = "now";                       // the next kit opens on its current state,
+    $("#remote-form").hidden = true;    // with nothing left over from this one
+    $("#remote-input").value = "";
+    return renderHome();
+  }
   if (!state.repo) return renderStart();
   renderHistory();
   if (view !== "now") return renderVersion(view);
@@ -257,7 +293,7 @@ async function act(name, body, button) {
   if (button) button.disabled = true;
   try {
     const result = await api(`/api/${name}`, body || {});
-    toast(result.message);
+    if (result.message) toast(result.message);
     view = "now";
     if (name === "commit") draft = "";
     await refresh();
@@ -429,6 +465,8 @@ function splitSection(sounds) {
     h("div", {class: "legend"}, people.map(([who, n]) =>
       h("span", {}, `${who} ${Math.round(n * 100 / sounds.length)}% (${n})`))));
 }
+
+$("#btn-home").addEventListener("click", (event) => act("close", {}, event.currentTarget));
 
 // Coming back to this window redraws it, so sounds added in Finder show up.
 window.addEventListener("focus", refresh);

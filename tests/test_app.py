@@ -8,7 +8,7 @@ import urllib.request
 import pytest
 
 from kit.app import make_server
-from kit.repo import Repo
+from kit.repo import KitError, Repo
 
 
 @pytest.fixture
@@ -162,3 +162,65 @@ def test_set_a_remote_then_push_and_pull(app, kit, tmp_path):
     sounds = {s["path"]: s["by"] for s in app.json("/api/state")["sounds"]}
     assert sounds["Hats/hat_lucas.wav"] == "Lucas"
     assert app.json("/api/pull", {})["message"] == "Already up to date."
+
+
+@pytest.fixture
+def home(tmp_path):
+    """A server started the way the double-click app starts: with no kit open."""
+    server, state = make_server()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def call(path, body=None):
+        request = urllib.request.Request(
+            base + path, data=json.dumps(body).encode() if body is not None else None,
+            headers={"X-Kit-Token": state.token})
+        try:
+            with urllib.request.urlopen(request) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    yield call
+    server.shutdown()
+    server.server_close()
+
+
+def test_the_home_screen_opens_kits_and_remembers_them(home, kit, tmp_path):
+    assert home("/api/state")[1] == {"home": True, "recent": []}
+    assert home("/api/commit", {"message": "x"})[0] == 400          # nothing is open yet
+
+    Repo.init(kit, author="Nojan")
+    assert home("/api/open", {"folder": str(kit / "Kicks")})[1]["message"] == "Opened kit"
+    state = home("/api/state")[1]
+    assert state["repo"] is True and state["folder"] == str(kit.resolve())   # a subfolder opens its kit
+
+    other = tmp_path / "loops"
+    other.mkdir()
+    home("/api/open", {"folder": str(other)})
+    assert home("/api/state")[1]["repo"] is False                   # a plain folder, not tracked yet
+
+    home("/api/close", {})
+    recent = home("/api/state")[1]["recent"]
+    assert [(k["name"], k["tracked"]) for k in recent] == [("loops", False), ("kit", True)]
+
+
+def test_opening_a_folder_that_is_not_there_is_refused(home, tmp_path):
+    status, body = home("/api/open", {"folder": str(tmp_path / "missing")})
+    assert status == 400 and "no folder" in body["error"]
+    assert home("/api/open", {"folder": "  "})[0] == 400
+    assert home("/api/state")[1]["home"] is True
+
+
+def test_recent_kits_that_were_deleted_are_left_out(home, tmp_path):
+    gone = tmp_path / "old_kit"
+    gone.mkdir()
+    home("/api/open", {"folder": str(gone)})
+    home("/api/close", {})
+    gone.rmdir()
+    assert home("/api/state")[1]["recent"] == []
+
+
+def test_starting_on_a_folder_that_is_not_there_is_refused(tmp_path):
+    with pytest.raises(KitError, match="no folder"):
+        make_server(tmp_path / "missing")
