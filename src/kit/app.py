@@ -67,8 +67,9 @@ def reveal(path: Path) -> None:
 class App:
     """The state behind the page: one kit folder, and the actions on it."""
 
-    def __init__(self, folder=None):
+    def __init__(self, folder=None, dev: bool = False):
         self.folder: Path | None = None  # None means the home screen: no kit is open
+        self.dev = dev  # development mode: the page reloads itself when ui.html is saved
         self.token = secrets.token_urlsafe(16)
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
@@ -319,7 +320,9 @@ class Handler(BaseHTTPRequestHandler):
             host = (self.headers.get("Host") or "").split(":")[0]
             if host not in ("127.0.0.1", "localhost"):
                 return self._json(403, {"error": "forbidden"})
-            page = PAGE.read_text(encoding="utf-8").replace("__KIT_TOKEN__", self.app.token)
+            page = (PAGE.read_text(encoding="utf-8")  # read every time, so a saved edit shows on reload
+                    .replace("__KIT_TOKEN__", self.app.token)
+                    .replace("__KIT_DEV__", "true" if self.app.dev else "false"))
             return self._send(200, page.encode(), "text/html; charset=utf-8")
         if url.path == "/favicon.ico":
             return self._send(204, b"", "image/x-icon")  # browsers always ask; there is no icon
@@ -333,6 +336,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(lambda: {"peaks": self.app.peaks(query)})
         if url.path == "/api/audio":
             return self._audio(query)
+        if url.path == "/api/dev" and self.app.dev:
+            # When ui.html was last saved. The page asks every second and reloads when it changes.
+            return self._json(200, {"page": PAGE.stat().st_mtime_ns})
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
@@ -378,19 +384,19 @@ class Handler(BaseHTTPRequestHandler):
         self._send(206 if partial else 200, data, kind, extra)
 
 
-def make_server(folder=None, port: int = 0) -> tuple[ThreadingHTTPServer, App]:
+def make_server(folder=None, port: int = 0, dev: bool = False) -> tuple[ThreadingHTTPServer, App]:
     """Build the server without starting it. Port 0 picks any free port.
 
     With no folder the app starts on its home screen, which is what the
     double-click app does: there is no "current folder" to assume.
     """
-    app = App(folder)
+    app = App(folder, dev=dev)
     handler = type("KitHandler", (Handler,), {"app": app})
     return ThreadingHTTPServer(("127.0.0.1", port), handler), app
 
 
-def serve(folder=".", port: int = 0, open_browser: bool = True) -> None:
-    server, app = make_server(folder, port)
+def serve(folder=".", port: int = 0, open_browser: bool = True, dev: bool = False) -> None:
+    server, app = make_server(folder, port, dev=dev)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Kit is running for {app.folder or 'your kits'}")
     print(f"Open {url}  (press Ctrl+C here to stop)")

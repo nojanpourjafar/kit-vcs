@@ -212,13 +212,13 @@ def cmd_show(args) -> None:
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
-    serve(args.folder, port=args.port, open_browser=not args.no_open)
+    serve(args.folder, port=args.port, open_browser=not args.no_open, dev=args.dev)
 
 
 def cmd_app(args) -> None:
     from .desktop import run
 
-    run(args.folder, window=not args.browser)
+    run(args.folder, window=not args.browser, dev=args.dev)
 
 
 def cmd_verify(args) -> None:
@@ -295,11 +295,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("folder", nargs="?", default=".", help="the kit folder (default: this one)")
     p.add_argument("--port", type=int, default=0, help="port to use (default: any free port)")
     p.add_argument("--no-open", action="store_true", help="start without opening the browser")
+    p.add_argument("--dev", action="store_true", help="reload the page when ui.html is saved")
     p.set_defaults(run=cmd_ui)
 
     p = sub.add_parser("app", help="open Kit in its own window (needs: pip install pywebview)")
     p.add_argument("folder", nargs="?", help="a kit folder to open (default: the home screen)")
     p.add_argument("--browser", action="store_true", help="use the web browser, not a window")
+    p.add_argument("--dev", action="store_true", help="reload when ui.html is saved, with developer tools")
     p.set_defaults(run=cmd_app)
 
     p = sub.add_parser("verify", help="check that nothing stored is damaged or missing")

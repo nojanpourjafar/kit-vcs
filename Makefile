@@ -3,7 +3,7 @@
 
 PYTHON ?= python3
 
-.PHONY: help test app ui build open icon release
+.PHONY: help test app dev ui build open icon release
 
 help: ## list these shortcuts
 	@awk -F':.*## ' '/^[a-z]+:.*## / {printf "  make %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -13,6 +13,9 @@ test: ## run all the tests
 
 app: ## open Kit in its own window
 	$(PYTHON) -m kit app
+
+dev: ## open Kit for working on ui.html: reloads on save, right-click > Inspect Element
+	$(PYTHON) -m kit app --dev
 
 ui: ## open Kit in the browser, for the kit in this folder
 	$(PYTHON) -m kit ui

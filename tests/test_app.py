@@ -263,3 +263,36 @@ def test_a_missing_file_browser_gets_a_plain_message(app, kit, monkeypatch):
     monkeypatch.setattr("kit.app.reveal", missing)
     status, body, _ = app("/api/reveal", {"path": "Kicks/kick_01.wav"})
     assert status == 400 and b"could not open the file browser" in body
+
+
+def test_dev_mode_tells_the_page_when_ui_html_was_saved(kit, tmp_path, monkeypatch):
+    import os
+
+    import kit.app as app_module
+
+    page = tmp_path / "ui.html"
+    page.write_text(app_module.PAGE.read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(app_module, "PAGE", page)     # a copy, so the real page is never touched
+    server, state = make_server(kit, dev=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}"
+
+    def get(path):
+        request = urllib.request.Request(base + path, headers={"X-Kit-Token": state.token})
+        with urllib.request.urlopen(request) as response:
+            return response.read()
+
+    try:
+        assert b"const DEV = true;" in get("/")
+        before = json.loads(get("/api/dev"))["page"]
+        stat = page.stat()
+        os.utime(page, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))  # "saved" 5 s later
+        assert json.loads(get("/api/dev"))["page"] != before
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_dev_mode_is_off_unless_asked_for(app):
+    assert b"const DEV = false;" in app("/", token="")[1]
+    assert app("/api/dev")[0] == 404

@@ -49,7 +49,7 @@ def test_a_window_is_opened_on_the_running_server(monkeypatch):
             seen.update(title=title, page=response.read(), api=js_api)
         return "the window"
 
-    fake = types.SimpleNamespace(create_window=create_window, start=lambda: seen.update(started=True))
+    fake = types.SimpleNamespace(create_window=create_window, start=lambda debug=False: seen.update(started=True))
     monkeypatch.setattr(desktop, "_load_webview", lambda: fake)
 
     desktop.run()
@@ -129,3 +129,24 @@ def test_the_mac_drag_code_loads():
     module = importlib.import_module("kit.dragout_mac")
     source = module.KitDragSource.alloc().init()
     assert source.draggingSession_sourceOperationMaskForDraggingContext_(None, 0) == module.AppKit.NSDragOperationCopy
+
+
+def test_dev_mode_turns_on_the_developer_tools(monkeypatch):
+    started = {}
+    fake = types.SimpleNamespace(create_window=lambda *args, **options: "the window",
+                                 start=lambda debug=False: started.update(debug=debug))
+    monkeypatch.setattr(desktop, "_load_webview", lambda: fake)
+    desktop.run(dev=True)
+    assert started == {"debug": True}
+
+
+def test_kit_app_and_kit_ui_pass_dev_on(monkeypatch):
+    import kit.app
+
+    calls = []
+    monkeypatch.setattr(desktop, "run", lambda folder, window=True, dev=False, **more: calls.append(("app", dev)))
+    monkeypatch.setattr(kit.app, "serve", lambda folder, port=0, open_browser=True, dev=False: calls.append(("ui", dev)))
+    cli.main(["app", "--dev"])
+    cli.main(["ui", "--dev", "--no-open"])
+    cli.main(["app"])
+    assert calls == [("app", True), ("ui", True), ("app", False)]

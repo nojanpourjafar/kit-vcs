@@ -60,9 +60,9 @@ def _load_webview():
     return webview
 
 
-def run(folder=None, window: bool = True, open_browser: bool = True) -> None:
+def run(folder=None, window: bool = True, open_browser: bool = True, dev: bool = False) -> None:
     """Start the server and show the page, in a window if possible."""
-    server, app = make_server(folder)
+    server, app = make_server(folder, dev=dev)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
@@ -79,7 +79,9 @@ def run(folder=None, window: bool = True, open_browser: bool = True) -> None:
             bridge = Bridge(app)
             bridge._window = webview.create_window(
                 "Kit", url, js_api=bridge, width=1180, height=820, min_size=(760, 560))
-            webview.start()  # returns when the window is closed
+            # debug=True adds "Inspect Element" to the right-click menu: the browser's
+            # developer tools, for working on the page.
+            webview.start(debug=dev)  # returns when the window is closed
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
@@ -91,11 +93,12 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="kit-app", description="Kit in its own window.")
     parser.add_argument("folder", nargs="?", help="a kit folder to open (default: the home screen)")
     parser.add_argument("--browser", action="store_true", help="use the web browser, not a window")
+    parser.add_argument("--dev", action="store_true", help="reload when ui.html is saved, with developer tools")
     parser.add_argument("--no-open", action="store_true", help=argparse.SUPPRESS)  # for tests
     # A double-clicked app can be handed extra arguments by the system; ignore them.
     args, _ = parser.parse_known_args(argv)
     try:
-        run(args.folder, window=not (args.browser or args.no_open), open_browser=not args.no_open)
+        run(args.folder, window=not (args.browser or args.no_open), open_browser=not args.no_open, dev=args.dev)
     except KitError as err:
         print(f"kit-app: {err}")
         return 1

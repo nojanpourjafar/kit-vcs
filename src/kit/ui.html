@@ -132,6 +132,7 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
 // The server writes a random token into this page. Every request sends it
 // back, which is how the server knows the request came from this page.
 const TOKEN = "__KIT_TOKEN__";
+const DEV = __KIT_DEV__;  // true when started with --dev (make dev)
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -530,6 +531,24 @@ window.addEventListener("pywebviewready", () => { if (state) render(); });
 
 // Coming back to this window redraws it, so sounds added in Finder show up.
 window.addEventListener("focus", refresh);
+
+// ---- development: reload when ui.html is saved ------------------------------
+
+// With --dev, the page asks the server once a second when ui.html was last
+// saved, and reloads itself when that changes. The open kit stays open, because
+// the server remembers it. Changes to Python files still need a restart.
+if (DEV) {
+  let saved = null;
+  setInterval(async () => {
+    try {
+      const {page} = await api("/api/dev");
+      if (saved !== null && page !== saved) location.reload();
+      saved = page;
+    } catch (error) {
+      // The server is restarting or busy; ask again next second.
+    }
+  }, 1000);
+}
 refresh();
 </script>
 </body>

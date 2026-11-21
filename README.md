@@ -245,6 +245,7 @@ Common tasks have short commands; run `make` to list them:
 ```
 make test                    # run the tests
 make app                     # open Kit in its own window
+make dev                     # the same, but it reloads when ui.html is saved, with developer tools
 make build                   # build the double-click app into dist/
 make release VERSION=0.6.0   # test, set the version, commit, tag and push; GitHub builds the apps
 ```
