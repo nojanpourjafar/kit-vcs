@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import remote
+from . import names, remote
 from .audio import describe
 from .audio import peaks
 from .manifest import diff
@@ -141,6 +141,7 @@ class App:
                                    locate=lambda path, entry: repo.folder / path, key="path"),
             "removed": [c.path for c in changes if c.kind == "removed"],
             "reveal": REVEAL_LABEL,
+            "warnings": names.warnings(working),
         }
 
     def version(self, ref: str) -> dict:

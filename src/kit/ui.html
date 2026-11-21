@@ -44,6 +44,9 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .sound { display: flex; align-items: center; gap: 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .what { flex: 1; min-width: 0; }
+.warn { margin-top: 14px; padding: 10px 14px; border-radius: 8px; font-size: 14px;
+  border: 1px solid var(--modified); color: var(--modified); }
+.warn ul { margin: 6px 0 0; padding-left: 18px; } .warn li { overflow-wrap: anywhere; }
 .reveal { padding: 4px 9px; font-size: 14px; line-height: 1; color: var(--muted); }
 .sound.draggable { cursor: grab; } .sound.draggable button { cursor: pointer; }
 .name { font-weight: 600; overflow-wrap: anywhere; }
@@ -245,6 +248,11 @@ function renderNow() {
     if (!state.sounds.length) {
       box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
     }
+  }
+  if (state.warnings.length) {
+    box.append(h("div", {class: "warn"},
+      h("strong", {}, "These names will not work for someone on Windows. Rename them before sharing:"),
+      h("ul", {}, state.warnings.map((line) => h("li", {}, line)))));
   }
   const parts = [box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds, true),
     removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];

@@ -182,6 +182,7 @@ The merge compares both sides with the last version they share. A file changed o
 - Files are written to a temporary name and then renamed, so a crash never leaves half a file. `HEAD` always moves last, so a failed save leaves the previous version current.
 - `kit restore` does not rewrite history. It puts the files back and leaves `HEAD` alone, so the rollback shows up as ordinary changes that can be committed as a new version.
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
+- Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.
 - `kit status` does not re-hash files whose size and modified time are unchanged, which keeps it fast on large kits. Files modified in the last two seconds are always re-hashed.
 - Paths in a manifest that point outside the kit folder are refused, since manifests can come from other people.
 - The app's server listens on 127.0.0.1 only, requires a random token that only its own page knows, and rejects requests whose Host header is not this machine. Without those checks, any web page open in the same browser could send it commands.
@@ -192,6 +193,7 @@ The merge compares both sides with the last version they share. A file changed o
 |---|---|
 | `src/kit/hashing.py` | SHA-256 of files and bytes |
 | `src/kit/objects.py` | The content-addressed object store |
+| `src/kit/names.py` | File names that work on every system |
 | `src/kit/manifest.py` | Scan a folder, compare snapshots, three-way merge |
 | `src/kit/commits.py` | The commit record, its ID, and history walking |
 | `src/kit/repo.py` | Commit, log, status, restore, merge, credits, verify |

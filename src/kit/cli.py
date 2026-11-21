@@ -11,7 +11,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from . import __version__, remote
+from . import __version__, names, remote
 from .audio import describe
 from .report import build_report
 from .repo import KitError, Repo
@@ -71,6 +71,14 @@ def cmd_init(args) -> None:
     print('Save your first version with: kit commit -m "first version"')
 
 
+def _print_name_warnings(paths) -> None:
+    lines = names.warnings(paths)
+    if lines:
+        print("These names will not work for someone on Windows (rename them before sharing):")
+        for line in lines:
+            print(f"  ! {line}")
+
+
 def cmd_status(args) -> None:
     repo = Repo.find()
     changes = repo.status()
@@ -81,6 +89,7 @@ def cmd_status(args) -> None:
         return
     print(f"Changes since v{len(history)}:" if history else "Not saved yet:")
     _print_changes(changes, locate=lambda path: repo.folder / path)
+    _print_name_warnings(repo.working())
     print('Save them with: kit commit -m "what changed"')
 
 
@@ -92,6 +101,7 @@ def cmd_commit(args) -> None:
     _print_changes(saved.changes, locate=lambda path: repo.folder / path)
     print(f"{_summary(saved.changes)}. Stored {saved.new_files} new file(s), "
           f"{_size(saved.new_bytes)}.")
+    _print_name_warnings(repo.manifest_of(saved.commit.id))
 
 
 def cmd_log(args) -> None:

@@ -15,9 +15,11 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
+from . import names
 from .commits import Commit, lineage, new_commit, parse_commit
 from .hashing import hash_file, is_digest
 from .manifest import Change, Manifest, diff, dumps, loads, merge_manifests, scan
@@ -344,6 +346,9 @@ class Repo:
         parts = PurePosixPath(rel).parts
         if not parts or PurePosixPath(rel).is_absolute() or ".." in parts:
             raise KitError(f"refusing to touch a path outside the kit folder: {rel!r}")
+        if sys.platform == "win32" and (reason := names.problem(rel)):
+            # Checked before any file is written, so the folder is never left half updated.
+            raise KitError(f"cannot write {rel} on Windows: {reason}. Ask whoever added it to rename it.")
         return self.folder.joinpath(*parts)
 
     def _remove_empty_folders(self, folder: Path) -> None:
