@@ -63,7 +63,7 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
-The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
+The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
 
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
@@ -193,6 +193,7 @@ The merge compares both sides with the last version they share. A file changed o
 |---|---|
 | `src/kit/hashing.py` | SHA-256 of files and bytes |
 | `src/kit/objects.py` | The content-addressed object store |
+| `src/kit/tags.py` | Tempo and key from file names |
 | `src/kit/names.py` | File names that work on every system |
 | `src/kit/manifest.py` | Scan a folder, compare snapshots, three-way merge |
 | `src/kit/commits.py` | The commit record, its ID, and history walking |

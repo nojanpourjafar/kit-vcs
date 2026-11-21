@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import names, remote
+from . import names, remote, tags
 from .audio import describe
 from .audio import peaks
 from .manifest import diff
@@ -172,6 +172,7 @@ class App:
             credit = by_hash.get(entry["hash"])
             sounds.append({
                 "path": path,
+                **tags.from_name(path),  # "bpm" and "key", when the file name says
                 "size": entry["size"],
                 # How the page asks for this sound's audio and waveform: by
                 # path for the working folder, by hash for a saved version.

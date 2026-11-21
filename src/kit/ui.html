@@ -189,8 +189,11 @@ function summary(changes) {
 function soundRow(sound, live) {
   const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
   if (sound.was) info.push(`was ${sound.was}`);
+  if (sound.bpm) info.push(`${sound.bpm} BPM`);
+  if (sound.key) info.push(sound.key);
   if (sound.info) info.push(sound.info);
   const row = h("li", {class: sound.path === selected ? "sound selected" : "sound", "data-path": sound.path,
+    "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(),
     onclick: () => select(row)});
   row.append(playButton(row, sound));
   row.append(h("div", {class: "what"},
@@ -252,15 +255,43 @@ function soundSection(title, sounds, live = false) {
 // new box starts empty; this way the search survives the redraw.
 let search = "";
 
+// What the search looks through for one sound: its path, plus its tempo and key
+// written the ways people type them, so "140", "140bpm", "f#m" and "f# minor"
+// all find "Dark Loop 140bpm F#m.wav".
+function searchText(sound) {
+  const words = [sound.path];
+  if (sound.bpm) words.push(`${sound.bpm}`, `${sound.bpm}bpm`);
+  if (sound.key) {
+    const [note, mode] = sound.key.split(" ");  // "F#", "min"
+    const long = mode === "min" ? "minor" : "major";
+    words.push(`${note}${mode}`, `${note} ${mode}`, `${note} ${long}`, `${note}${long}`);
+    if (mode === "min") words.push(`${note}m`);
+  }
+  return words.join(" | ").toLowerCase();
+}
+
 // Hide the rows that do not match. Every word typed must appear somewhere in
-// the sound's path, in any order and any case: "kick 808" finds "808s/Kick 808.wav".
+// the sound's search text, in any order and any case: "kick 808" finds "808s/Kick 808.wav".
 // Rows are hidden, not removed, so playing and waveforms carry on untouched.
+// A key typed into the search: "a minor", "F# min", "Cmaj", "ebm". It is matched
+// as a whole against each sound's key, or "a minor" would find "F# minor" through
+// the separate words "a" and "minor". Short forms like "am" are not treated as
+// keys, because they are just as likely to be part of a name ("sample").
+const KEY_QUERY = /(?:^|\s)([a-g])(#|b)?\s?(minor|min|major|maj)(?=\s|$)|(?:^|\s)([a-g])(#|b)m(?=\s|$)/;
+
 function filter(list, none) {
-  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  let text = search.toLowerCase();
+  let key = null;
+  const match = text.match(KEY_QUERY);
+  if (match) {
+    const [, note, sign, mode, shortNote, shortSign] = match;
+    key = note ? `${note}${sign || ""} ${mode.startsWith("maj") ? "maj" : "min"}` : `${shortNote}${shortSign} min`;
+    text = text.replace(match[0], " ");
+  }
+  const words = text.split(/\s+/).filter(Boolean);
   let shown = 0;
   for (const row of list.children) {
-    const path = row.dataset.path.toLowerCase();
-    row.hidden = !words.every((word) => path.includes(word));
+    row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key));
     if (!row.hidden) shown++;
   }
   none.hidden = shown > 0;
