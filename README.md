@@ -52,6 +52,15 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
+To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
+
+```
+pip install -e ".[app]"
+kit app
+```
+
+It starts on the home screen, with a button that opens the system's folder chooser. The window is the same page as `kit ui`, shown by [pywebview](https://pywebview.flowrl.com/) in the system's built-in web view, so no browser is bundled. `kit app --browser`, or running it without pywebview installed, uses the browser instead.
+
 ## Sharing a kit
 
 A remote is anywhere a copy of the history can live. The simplest one is a folder: a USB drive, or a folder synced by Google Drive or Dropbox.
@@ -102,6 +111,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit restore v1` | Put the folder back to an earlier version |
 | `kit credits` | Show who first added each sound, and the split |
 | `kit ui` | Open Kit as an app in your browser |
+| `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
 | `kit show [v2]` | Write a version out as a single web page you can send to someone |
 | `kit remote [where]` | Show or set the default remote |
 | `kit push [where]` | Send new versions to a remote |
@@ -165,8 +175,9 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/audio.py` | WAV length, sample rate and waveform outline |
 | `src/kit/report.py` | The `kit show` web page |
-| `src/kit/app.py` | The `kit ui` server: JSON endpoints over the same Repo methods |
-| `src/kit/ui.html` | The `kit ui` page: layout, styles and script in one file |
+| `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
+| `src/kit/ui.html` | The page: layout, styles and script in one file |
+| `src/kit/desktop.py` | `kit app`: the page in a native window, with a folder chooser |
 | `src/kit/cli.py` | The `kit` command |
 
 ## Roadmap

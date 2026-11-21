@@ -230,6 +230,11 @@ function renderStart() {
 
 // ---- the home screen: pick a kit --------------------------------------------
 
+// Inside the desktop app, Python adds `window.pywebview.api` to the page. Its
+// pick_folder() shows the system's own folder chooser. A browser cannot hand a
+// web page a folder's full path, so there the path is typed in.
+const inDesktopApp = () => Boolean(window.pywebview && window.pywebview.api);
+
 function renderHome() {
   const box = h("section", {class: "card"}, h("h1", {}, "Your kits"));
   if (state.recent.length) {
@@ -239,12 +244,19 @@ function renderHome() {
   } else {
     box.append(h("p", {class: "muted"}, "No kits yet. Open a folder of sounds to start."));
   }
-  const path = h("input", {type: "text", "aria-label": "Folder path",
-    placeholder: "Path of a kit folder, like ~/Music/MyDrumKit"});
-  box.append(h("form", {class: "row", onsubmit: (event) => {
-    event.preventDefault();
-    act("open", {folder: path.value}, event.submitter);
-  }}, path, h("button", {class: "primary"}, "Open folder")));
+  if (inDesktopApp()) {
+    box.append(h("div", {class: "row"}, h("button", {class: "primary", onclick: async (event) => {
+      const folder = await window.pywebview.api.pick_folder();
+      if (folder) act("open", {folder}, event.target);
+    }}, "Open a folder…")));
+  } else {
+    const path = h("input", {type: "text", "aria-label": "Folder path",
+      placeholder: "Path of a kit folder, like ~/Music/MyDrumKit"});
+    box.append(h("form", {class: "row", onsubmit: (event) => {
+      event.preventDefault();
+      act("open", {folder: path.value}, event.submitter);
+    }}, path, h("button", {class: "primary"}, "Open folder")));
+  }
   $("#main").replaceChildren(box);
 }
 
@@ -467,6 +479,10 @@ function splitSection(sounds) {
 }
 
 $("#btn-home").addEventListener("click", (event) => act("close", {}, event.currentTarget));
+
+// The desktop app announces when its Python bridge is ready; redraw so the
+// home screen can swap the path box for the "Open a folder…" button.
+window.addEventListener("pywebviewready", () => { if (state) render(); });
 
 // Coming back to this window redraws it, so sounds added in Finder show up.
 window.addEventListener("focus", refresh);

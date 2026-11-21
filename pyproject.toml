@@ -13,9 +13,13 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 s3 = ["boto3>=1.28"]
+app = ["pywebview>=5"]
 
 [project.scripts]
 kit = "kit.cli:main"
+
+[project.gui-scripts]
+kit-app = "kit.desktop:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
