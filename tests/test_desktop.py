@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 
 from kit import cli, desktop
+from kit.app import App
+from kit.repo import KitError, Repo
 
 
 class FakeWindow:
@@ -84,3 +86,46 @@ def test_kit_app_is_a_command(monkeypatch, tmp_path, capsys):
 def test_a_folder_that_is_not_there_gets_a_plain_message(tmp_path, capsys):
     assert desktop.main([str(tmp_path / "missing"), "--no-open"]) == 1
     assert "no folder" in capsys.readouterr().out
+
+
+@pytest.fixture
+def bridge(kit, monkeypatch):
+    """A Bridge for an open kit, with a stand-in for the macOS drag code."""
+    Repo.init(kit, author="Nojan")
+    started = []
+    fake = types.SimpleNamespace(start=lambda window, file: started.append((window, file)))
+    monkeypatch.setitem(sys.modules, "kit.dragout_mac", fake)
+    monkeypatch.delattr("kit.dragout_mac", raising=False)   # make `from . import` find the stand-in
+    bridge = desktop.Bridge(App(kit))
+    bridge._window = types.SimpleNamespace(native="the NSWindow")
+    bridge.started = started
+    return bridge
+
+
+def test_a_sound_can_be_dragged_out_on_a_mac(bridge, monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "darwin")
+    assert bridge.drag_sound("Kicks/kick_01.wav") is True
+    [(window, file)] = bridge.started
+    assert window == "the NSWindow" and file.name == "kick_01.wav" and file.is_file()
+
+
+def test_dragging_is_refused_outside_the_kit(bridge, monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "darwin")
+    for bad in ["../outside.wav", ".kit/HEAD", "Kicks/missing.wav"]:
+        with pytest.raises(KitError):
+            bridge.drag_sound(bad)
+    assert bridge.started == []
+
+
+def test_other_systems_say_dragging_is_not_supported(bridge, monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "win32")
+    assert bridge.drag_sound("Kicks/kick_01.wav") is False and bridge.started == []
+
+
+def test_the_mac_drag_code_loads():
+    pytest.importorskip("AppKit")          # only where PyObjC is installed: macOS with pywebview
+    import importlib
+
+    module = importlib.import_module("kit.dragout_mac")
+    source = module.KitDragSource.alloc().init()
+    assert source.draggingSession_sourceOperationMaskForDraggingContext_(None, 0) == module.AppKit.NSDragOperationCopy

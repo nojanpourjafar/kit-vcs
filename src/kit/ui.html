@@ -45,6 +45,7 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .what { flex: 1; min-width: 0; }
 .reveal { padding: 4px 9px; font-size: 14px; line-height: 1; color: var(--muted); }
+.sound.draggable { cursor: grab; } .sound.draggable button { cursor: pointer; }
 .name { font-weight: 600; overflow-wrap: anywhere; }
 .info { color: var(--muted); font-size: 13px; }
 .badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
@@ -189,8 +190,35 @@ function soundRow(sound, live) {
   if (live) {
     row.append(h("button", {class: "reveal", title: state.reveal, "aria-label": `${state.reveal}: ${sound.path}`,
       onclick: (event) => act("reveal", {path: sound.path}, event.currentTarget)}, "↗"));
+    dragOut(row, sound);
   }
   return row;
+}
+
+// In the desktop app on a Mac, a sound can be dragged out of the window into FL
+// Studio. A web page cannot hand a real file to another program, so once the
+// mouse has moved a few pixels with the button held down, the page asks Python
+// to start a native drag, the kind Finder starts. Buttons and the waveform keep
+// their own clicks.
+function dragOut(row, sound) {
+  if (!inDesktopApp() || !window.pywebview.api.drag_sound) return;
+  row.classList.add("draggable");
+  row.title = "Drag into FL Studio or any other app";
+  row.addEventListener("mousedown", (down) => {
+    if (down.button !== 0 || down.target.closest("button, .wave")) return;
+    down.preventDefault();  // no text selection while dragging
+    const move = (event) => {
+      if (Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < 5) return;
+      stop();
+      window.pywebview.api.drag_sound(sound.path).catch((error) => toast(error.message, true));
+    };
+    const stop = () => {
+      removeEventListener("mousemove", move);
+      removeEventListener("mouseup", stop);
+    };
+    addEventListener("mousemove", move);
+    addEventListener("mouseup", stop);
+  });
 }
 
 function soundSection(title, sounds, live = false) {

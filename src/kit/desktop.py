@@ -11,6 +11,7 @@ normal web browser, exactly like `kit ui`.
 from __future__ import annotations
 
 import argparse
+import sys
 import threading
 import webbrowser
 
@@ -26,8 +27,9 @@ class Bridge:
     attribute so that it is not exposed to the page as well.
     """
 
-    def __init__(self):
+    def __init__(self, app=None):
         self._window = None
+        self._app = app  # the App behind the page, to check which files may be dragged
 
     def pick_folder(self) -> str | None:
         """Show the system's folder chooser. Returns the chosen path, or None if cancelled."""
@@ -38,6 +40,16 @@ class Bridge:
         kind = dialogs.FOLDER if dialogs is not None else webview.FOLDER_DIALOG
         chosen = self._window.create_file_dialog(kind)
         return str(chosen[0]) if chosen else None
+
+    def drag_sound(self, path: str) -> bool:
+        """Start dragging a sound out of the window. Returns False where that is not supported."""
+        file, _ = self._app.locate({"path": path})  # refuses .kit and paths outside the kit
+        if sys.platform != "darwin":
+            return False  # Windows and Linux: use the Show in Explorer button instead
+        from . import dragout_mac
+
+        dragout_mac.start(self._window.native, file)
+        return True
 
 
 def _load_webview():
@@ -64,7 +76,7 @@ def run(folder=None, window: bool = True, open_browser: bool = True) -> None:
                 webbrowser.open(url)
             threading.Event().wait()  # sleep until Ctrl+C
         else:
-            bridge = Bridge()
+            bridge = Bridge(app)
             bridge._window = webview.create_window(
                 "Kit", url, js_api=bridge, width=1180, height=820, min_size=(760, 560))
             webview.start()  # returns when the window is closed

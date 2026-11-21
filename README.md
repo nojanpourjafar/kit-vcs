@@ -63,7 +63,7 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
-The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program.
+The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window.
 
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
@@ -202,6 +202,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
 | `src/kit/ui.html` | The page: layout, styles and script in one file |
 | `src/kit/desktop.py` | `kit app`: the page in a native window, with a folder chooser |
+| `src/kit/dragout_mac.py` | Dragging a sound out of the window on macOS (PyObjC) |
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 | `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
