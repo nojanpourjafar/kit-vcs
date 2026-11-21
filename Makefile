@@ -3,7 +3,7 @@
 
 PYTHON ?= python3
 
-.PHONY: help test app dev ui build open icon release
+.PHONY: help test app dev ui build open measure icon release
 
 help: ## list these shortcuts
 	@awk -F':.*## ' '/^[a-z]+:.*## / {printf "  make %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -25,6 +25,10 @@ build: ## build the double-click app into dist/
 
 open: build ## build the app, then open it
 	open dist/Kit.app
+
+measure: ## measure a real kit, read only: make measure KIT=~/Music/MyKit
+	@test -n "$(KIT)" || { echo 'Say which kit: make measure KIT=~/Music/MyKit'; exit 1; }
+	$(PYTHON) scripts/measure.py "$(KIT)"
 
 icon: ## redraw the app icon after changing packaging/make_icon.py
 	$(PYTHON) packaging/make_icon.py

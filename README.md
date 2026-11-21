@@ -210,6 +210,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 | `scripts/release.py` | Publishes a new version (`make release`) |
+| `scripts/measure.py` | Measures Kit on a real kit folder, read only (`make measure`) |
 | `Makefile` | Short commands for common tasks |
 | `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
 
@@ -249,6 +250,7 @@ make test                    # run the tests
 make app                     # open Kit in its own window
 make dev                     # the same, but it reloads when ui.html is saved, with developer tools
 make build                   # build the double-click app into dist/
+make measure KIT=~/Music/MyKit   # read-only report: speed, space, duplicates, tempo accuracy
 make release VERSION=0.6.0   # test, set the version, commit, tag and push; GitHub builds the apps
 ```
 
