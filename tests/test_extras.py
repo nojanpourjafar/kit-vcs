@@ -94,7 +94,7 @@ def test_waveform_follows_the_loudness_of_the_sound(tmp_path):
 
 
 def test_show_builds_a_page_with_a_waveform_and_player_per_sound(tmp_path):
-    folder = tmp_path / "My <Kit>"
+    folder = tmp_path / "Drums & Bass"   # & must be escaped too, and unlike < and > Windows allows it in names
     folder.mkdir()
     _write_wav(folder / "kick.wav", [15000, -15000] * 200)
     _write_wav(folder / "hat.wav", [8000, -8000] * 50)
@@ -108,7 +108,7 @@ def test_show_builds_a_page_with_a_waveform_and_player_per_sound(tmp_path):
     page = build_report(repo)
 
     assert page.startswith("<!DOCTYPE html>")
-    assert "My &lt;Kit&gt;" in page and "tidy &lt;up&gt;" in page      # text is escaped
+    assert "Drums &amp; Bass" in page and "tidy &lt;up&gt;" in page    # text is escaped
     assert page.count("<svg") == 1 and page.count("<audio") == 1       # one WAV in v2
     assert "was hat.wav" in page and "added by Nojan" in page          # rename keeps the credit
     assert "Removed in v2" in page and "kick.wav" in page
