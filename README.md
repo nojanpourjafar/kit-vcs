@@ -10,6 +10,15 @@ Keep your kit folder exactly as it is. `kit` remembers every version of it, show
 
 Producers share kits as zip files, so every update is a new zip and nobody can tell what changed. Kit gives a kit folder a real history: small, readable versions in place of `MyKit_v3_FINAL.zip`, updates that send only the new sounds, and credits that survive renames and collaboration.
 
+## Download
+
+The app is on the [releases page](https://github.com/nojanpourjafar/kit-vcs/releases/latest): `Kit-macOS.zip` for Macs with Apple Silicon, `Kit-Windows.zip` for Windows. Unzip it and open Kit; nothing else needs installing.
+
+The app is not signed yet, so the system warns the first time:
+
+- **macOS:** if it says Kit cannot be opened, go to System Settings > Privacy & Security and click Open Anyway.
+- **Windows:** if SmartScreen appears, click More info, then Run anyway.
+
 ## Install
 
 Needs Python 3.10 or newer. No other dependencies.
@@ -72,7 +81,7 @@ pip install -e ".[app]" pyinstaller
 python packaging/build_app.py
 ```
 
-The result is `dist/Kit.app` on macOS and `dist/Kit/Kit.exe` on Windows. PyInstaller builds for the system it runs on, so the Windows app has to be built on Windows. The app is not signed: the first time it is opened on another Mac, macOS will refuse until it is allowed under System Settings > Privacy & Security.
+The result is `dist/Kit.app` on macOS and `dist/Kit/Kit.exe` on Windows. Pushing a version tag (`git tag v0.4.0 && git push --tags`) makes GitHub build both and publish them as a release (`.github/workflows/release.yml`). PyInstaller builds for the system it runs on, so the Windows app has to be built on Windows. The app is not signed: the first time it is opened on another Mac, macOS will refuse until it is allowed under System Settings > Privacy & Security.
 
 ## Sharing a kit
 
