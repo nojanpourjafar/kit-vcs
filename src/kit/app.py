@@ -17,6 +17,7 @@ import json
 import mimetypes
 import os
 import secrets
+import subprocess
 import sys
 import threading
 import webbrowser
@@ -43,6 +44,24 @@ def config_dir() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "Kit"
     return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "kit"
+
+
+# What the "show the file" button is called on each system.
+REVEAL_LABEL = {"darwin": "Show in Finder", "win32": "Show in Explorer"}.get(sys.platform, "Show in folder")
+
+
+def reveal(path: Path) -> None:
+    """Open the system's file browser with this file selected, so it can be dragged anywhere.
+
+    The path goes to the program as one argument, never through a shell, so a
+    file name with spaces or quotes cannot turn into a different command.
+    """
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])  # -R: reveal in Finder instead of opening
+    elif sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{path}"])
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])  # Linux file managers cannot select a file
 
 
 class App:
@@ -121,6 +140,7 @@ class App:
             "sounds": self._sounds(working, changes, by_hash, labels,
                                    locate=lambda path, entry: repo.folder / path, key="path"),
             "removed": [c.path for c in changes if c.kind == "removed"],
+            "reveal": REVEAL_LABEL,
         }
 
     def version(self, ref: str) -> dict:
@@ -202,6 +222,13 @@ class App:
             return {"message": ""}
         if self.folder is None:
             raise KitError("open a kit folder first")
+        if action == "reveal":
+            path, _ = self.locate({"path": body.get("path", "")})  # refuses .kit and paths outside the folder
+            try:
+                reveal(path)
+            except OSError as err:  # e.g. no file manager installed
+                raise KitError(f"could not open the file browser ({err.strerror or err})") from err
+            return {"message": ""}
         if action == "init":
             Repo.init(self.folder, author=(body.get("author") or "").strip() or None)
             return {"message": "Started tracking this folder."}

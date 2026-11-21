@@ -224,3 +224,42 @@ def test_recent_kits_that_were_deleted_are_left_out(home, tmp_path):
 def test_starting_on_a_folder_that_is_not_there_is_refused(tmp_path):
     with pytest.raises(KitError, match="no folder"):
         make_server(tmp_path / "missing")
+
+
+def test_show_in_finder_opens_only_files_inside_the_kit(app, kit, monkeypatch):
+    Repo.init(kit, author="Nojan")
+    shown = []
+    monkeypatch.setattr("kit.app.reveal", shown.append)   # don't really open Finder during tests
+
+    assert app("/api/reveal", {"path": "Kicks/kick_01.wav"})[0] == 200
+    assert [path.name for path in shown] == ["kick_01.wav"]
+    for bad in ["../outside.wav", ".kit/HEAD", "Kicks/missing.wav", ""]:
+        assert app("/api/reveal", {"path": bad})[0] == 400
+    assert len(shown) == 1                                 # none of the bad ones got through
+
+
+def test_reveal_passes_the_path_as_one_argument(monkeypatch, tmp_path):
+    import kit.app as app_module
+
+    calls = []
+    monkeypatch.setattr(app_module.subprocess, "Popen", calls.append)
+    tricky = tmp_path / 'a "quoted" name; rm -rf.wav'
+    for system in ["darwin", "win32", "linux"]:
+        monkeypatch.setattr(app_module.sys, "platform", system)
+        app_module.reveal(tricky)
+    assert calls == [
+        ["open", "-R", str(tricky)],
+        ["explorer", f"/select,{tricky}"],
+        ["xdg-open", str(tmp_path)],
+    ]
+
+
+def test_a_missing_file_browser_gets_a_plain_message(app, kit, monkeypatch):
+    Repo.init(kit, author="Nojan")
+
+    def missing(path):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    monkeypatch.setattr("kit.app.reveal", missing)
+    status, body, _ = app("/api/reveal", {"path": "Kicks/kick_01.wav"})
+    assert status == 400 and b"could not open the file browser" in body

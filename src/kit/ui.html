@@ -44,6 +44,7 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .sound { display: flex; align-items: center; gap: 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .what { flex: 1; min-width: 0; }
+.reveal { padding: 4px 9px; font-size: 14px; line-height: 1; color: var(--muted); }
 .name { font-weight: 600; overflow-wrap: anywhere; }
 .info { color: var(--muted); font-size: 13px; }
 .badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 999px;
@@ -172,7 +173,9 @@ function summary(changes) {
 
 // ---- one sound ------------------------------------------------------------
 
-function soundRow(sound) {
+// `live` is true for sounds that are in the folder right now (the "Now" screen),
+// as opposed to a sound inside an old version, which only exists in .kit.
+function soundRow(sound, live) {
   const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
   if (sound.was) info.push(`was ${sound.was}`);
   if (sound.info) info.push(sound.info);
@@ -183,11 +186,16 @@ function soundRow(sound) {
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
     h("div", {class: "info"}, info.join(" · "))));
   row.append(waveBox(row, sound));
+  if (live) {
+    row.append(h("button", {class: "reveal", title: state.reveal, "aria-label": `${state.reveal}: ${sound.path}`,
+      onclick: (event) => act("reveal", {path: sound.path}, event.currentTarget)}, "↗"));
+  }
   return row;
 }
 
-function soundSection(title, sounds) {
-  return h("section", {}, h("h2", {}, title), h("ul", {class: "sounds"}, sounds.map(soundRow)));
+function soundSection(title, sounds, live = false) {
+  return h("section", {}, h("h2", {}, title),
+    h("ul", {class: "sounds"}, sounds.map((sound) => soundRow(sound, live))));
 }
 
 function removedSection(title, paths) {
@@ -210,7 +218,7 @@ function renderNow() {
       box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
     }
   }
-  const parts = [box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds),
+  const parts = [box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds, true),
     removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];
   parts.push(splitSection(state.sounds));
   $("#main").replaceChildren(...parts.filter(Boolean));

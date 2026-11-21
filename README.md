@@ -63,6 +63,8 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
+The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program.
+
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
 ```
