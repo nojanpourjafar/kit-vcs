@@ -1,5 +1,7 @@
 # Kit
 
+[![tests](https://github.com/nojanpourjafar/kit-vcs/actions/workflows/tests.yml/badge.svg)](https://github.com/nojanpourjafar/kit-vcs/actions/workflows/tests.yml)
+
 Git-style version control for sample packs and loop kits.
 
 Keep your kit folder exactly as it is. `kit` remembers every version of it, shows what changed between versions, rolls back, shares the kit with other producers, merges their changes into yours, and records who added each sound.
@@ -219,5 +221,7 @@ python -m pytest
 ```
 
 The S3 tests run only when `boto3` and `moto` are installed (`pip install boto3 moto`).
+
+GitHub runs the same tests on macOS, Windows and Linux, with Python 3.10 and 3.13, on every push (`.github/workflows/tests.yml`).
 
 The package is named `kit-vcs` because the plain name `kit` is taken on PyPI. The command is `kit`.

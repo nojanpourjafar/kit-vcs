@@ -1,11 +1,13 @@
 """The desktop window. A real window cannot open in a test, so pywebview is replaced by a stand-in."""
 
 import json
+import os
 import re
 import subprocess
 import sys
 import types
 import urllib.request
+from pathlib import Path
 
 import pytest
 
@@ -55,7 +57,10 @@ def test_a_window_is_opened_on_the_running_server(monkeypatch):
 
 
 def test_without_pywebview_it_falls_back_to_the_browser(tmp_path):
-    env = {"KIT_CONFIG_DIR": str(tmp_path), "PYTHONPATH": "src", "PATH": "", "PYTHONUNBUFFERED": "1"}
+    # Start from the real environment: on Windows, Python cannot start without
+    # system variables such as SYSTEMROOT.
+    src = Path(__file__).resolve().parent.parent / "src"
+    env = {**os.environ, "KIT_CONFIG_DIR": str(tmp_path), "PYTHONPATH": str(src), "PYTHONUNBUFFERED": "1"}
     process = subprocess.Popen([sys.executable, "-m", "kit.desktop", "--no-open"],
                                stdout=subprocess.PIPE, text=True, env=env)
     try:
