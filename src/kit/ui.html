@@ -24,6 +24,11 @@
 body { margin: 0; background: var(--bg); color: var(--ink);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
+.section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.section-head h2 { margin: 0; }
+.search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); }
+.none { margin: 8px 0 0; }
 h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 .muted { color: var(--muted); margin: 4px 0 0; }
@@ -184,7 +189,7 @@ function soundRow(sound, live) {
   const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
   if (sound.was) info.push(`was ${sound.was}`);
   if (sound.info) info.push(sound.info);
-  const row = h("li", {class: "sound"});
+  const row = h("li", {class: "sound", "data-path": sound.path});
   row.append(playButton(row, sound));
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
@@ -226,9 +231,46 @@ function dragOut(row, sound) {
 }
 
 function soundSection(title, sounds, live = false) {
-  return h("section", {}, h("h2", {}, title),
-    h("ul", {class: "sounds"}, sounds.map((sound) => soundRow(sound, live))));
+  const list = h("ul", {class: "sounds"}, sounds.map((sound) => soundRow(sound, live)));
+  const none = h("p", {class: "muted none", hidden: true});
+  if (sounds.length < 2) return h("section", {}, h("h2", {}, title), list);
+  const box = h("input", {type: "search", class: "search", value: search, "aria-label": "Search sounds",
+    placeholder: "Search sounds  ( / )", oninput: () => { search = box.value; filter(list, none); },
+    onkeydown: (event) => {
+      if (event.key === "Escape") { box.value = search = ""; filter(list, none); box.blur(); }
+    }});
+  filter(list, none);
+  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), box), list, none);
 }
+
+// ---- search ---------------------------------------------------------------
+
+// What is typed in the search box. Kept outside the box because the screen is
+// redrawn often (after a save, when the window comes back into focus), and a
+// new box starts empty; this way the search survives the redraw.
+let search = "";
+
+// Hide the rows that do not match. Every word typed must appear somewhere in
+// the sound's path, in any order and any case: "kick 808" finds "808s/Kick 808.wav".
+// Rows are hidden, not removed, so playing and waveforms carry on untouched.
+function filter(list, none) {
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+  let shown = 0;
+  for (const row of list.children) {
+    const path = row.dataset.path.toLowerCase();
+    row.hidden = !words.every((word) => path.includes(word));
+    if (!row.hidden) shown++;
+  }
+  none.hidden = shown > 0;
+  none.textContent = `No sounds match "${search}".`;
+}
+
+// Press / anywhere to jump to the search box, as on GitHub.
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "/" || event.target.closest("input, textarea")) return;
+  const box = $(".search");
+  if (box) { event.preventDefault(); box.focus(); box.select(); }
+});
 
 function removedSection(title, paths) {
   if (!paths.length) return null;
