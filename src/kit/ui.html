@@ -29,6 +29,7 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.sound.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 .muted { color: var(--muted); margin: 4px 0 0; }
@@ -189,7 +190,8 @@ function soundRow(sound, live) {
   const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
   if (sound.was) info.push(`was ${sound.was}`);
   if (sound.info) info.push(sound.info);
-  const row = h("li", {class: "sound", "data-path": sound.path});
+  const row = h("li", {class: sound.path === selected ? "sound selected" : "sound", "data-path": sound.path,
+    onclick: () => select(row)});
   row.append(playButton(row, sound));
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
@@ -265,11 +267,57 @@ function filter(list, none) {
   none.textContent = `No sounds match "${search}".`;
 }
 
-// Press / anywhere to jump to the search box, as on GitHub.
+// ---- keyboard ---------------------------------------------------------------
+
+// /  jump to the search box (as on GitHub)      Esc  clear the search
+// ↑ ↓  choose a sound                            Space  play or pause it
+// Enter in the search box  play the first match
+
+// The chosen sound's path. Kept outside the rows, like `search`, so the choice
+// survives the screen being redrawn.
+let selected = null;
+
+// The rows the search has not hidden, top to bottom.
+const visibleRows = () => [...document.querySelectorAll(".sounds .sound")].filter((row) => !row.hidden);
+
+function select(row) {
+  for (const other of document.querySelectorAll(".sound.selected")) other.classList.remove("selected");
+  selected = row ? row.dataset.path : null;
+  if (row) {
+    row.classList.add("selected");
+    row.scrollIntoView({block: "nearest"});  // scroll only if it is off screen
+  }
+}
+
+// Move the choice up (-1) or down (+1), stopping at the ends of the list.
+function move(step) {
+  const rows = visibleRows();
+  if (!rows.length) return;
+  const at = rows.findIndex((row) => row.dataset.path === selected);
+  const next = at === -1 ? (step > 0 ? 0 : rows.length - 1) : Math.min(rows.length - 1, Math.max(0, at + step));
+  select(rows[next]);
+}
+
+const play = (row) => row.querySelector(".play").click();  // the same as clicking its play button
+
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "/" || event.target.closest("input, textarea")) return;
-  const box = $(".search");
-  if (box) { event.preventDefault(); box.focus(); box.select(); }
+  const typing = event.target.closest("input, textarea");  // keys there belong to the text
+  const inSearch = event.target.classList.contains("search");
+  if (event.key === "/" && !typing) {
+    const box = $(".search");
+    if (box) { event.preventDefault(); box.focus(); box.select(); }
+  } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && (!typing || inSearch)) {
+    event.preventDefault();  // otherwise the arrows also scroll the page
+    if (inSearch) event.target.blur();
+    move(event.key === "ArrowDown" ? 1 : -1);
+  } else if (event.key === " " && !typing && !event.target.closest("button")) {
+    // A focused button already reacts to Space on its own, so leave those alone.
+    const row = visibleRows().find((candidate) => candidate.dataset.path === selected);
+    if (row) { event.preventDefault(); play(row); }
+  } else if (event.key === "Enter" && inSearch) {
+    const row = visibleRows()[0];
+    if (row) { select(row); play(row); }
+  }
 });
 
 function removedSection(title, paths) {

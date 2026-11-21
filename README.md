@@ -63,7 +63,7 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
-The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`.
+The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
 
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
