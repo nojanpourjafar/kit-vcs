@@ -1,18 +1,20 @@
 """Reading audio files: length, sample rate, a waveform outline, and tempo.
 
-Standard library only, so it understands plain PCM WAV files and quietly gives
-up on anything else (compressed formats, 32-bit float WAVs).
+Standard library only. It reads WAV files (integer and floating-point samples,
+see wavfile.py) and quietly gives up on anything else (MP3, FLAC, AIFF).
 """
 
 from __future__ import annotations
 
 import math
+import struct
 import sys
-import wave
 from array import array
 from pathlib import Path
 
-_WAVE_ERRORS = (wave.Error, EOFError, OSError, ZeroDivisionError, ValueError)
+from .wavfile import WavError, open_wav
+
+_WAVE_ERRORS = (WavError, EOFError, OSError, ZeroDivisionError, ValueError, struct.error)
 
 
 def describe(file_path: Path, name: str) -> str | None:
@@ -24,10 +26,8 @@ def describe(file_path: Path, name: str) -> str | None:
     if not name.lower().endswith(".wav"):
         return None
     try:
-        with wave.open(str(file_path), "rb") as wav:
-            rate = wav.getframerate()
-            seconds = wav.getnframes() / rate
-            channels = wav.getnchannels()
+        with open_wav(file_path) as wav:
+            rate, seconds, channels = wav.rate, wav.frames / wav.rate, wav.channels
     except _WAVE_ERRORS:
         return None
     layout = {1: "mono", 2: "stereo"}.get(channels, f"{channels} channels")
@@ -43,14 +43,13 @@ def peaks(file_path: Path, name: str, buckets: int = 96) -> list[float] | None:
     if not name.lower().endswith(".wav"):
         return None
     try:
-        with wave.open(str(file_path), "rb") as wav:
-            width, frames = wav.getsampwidth(), wav.getnframes()
-            if frames == 0 or width not in (1, 2, 3, 4):
+        with open_wav(file_path) as wav:
+            if wav.frames == 0:
                 return None
-            per_bucket = max(1, -(-frames // buckets))  # round up, so every frame is covered
+            per_bucket = max(1, -(-wav.frames // buckets))  # round up, so every frame is covered
             levels = []
             while chunk := wav.readframes(per_bucket):
-                levels.append(_loudest(chunk, width))
+                levels.append(_loudest(chunk, wav.width, wav.is_float))
     except _WAVE_ERRORS:
         return None
     top = max(levels, default=0.0)
@@ -59,8 +58,11 @@ def peaks(file_path: Path, name: str, buckets: int = 96) -> list[float] | None:
     return [level / top for level in levels]
 
 
-def _loudest(chunk: bytes, width: int) -> float:
+def _loudest(chunk: bytes, width: int, is_float: bool = False) -> float:
     """Peak level of a block of samples, as a fraction of full scale."""
+    if is_float:
+        samples = _floats(chunk, width)
+        return min(1.0, max(max(samples), -min(samples))) if samples else 0.0
     if width == 1:  # 8-bit WAV is unsigned, centred on 128
         return max(abs(b - 128) for b in chunk) / 128
     if width == 2:
@@ -97,16 +99,16 @@ def tempo(file_path: Path, name: str) -> float | None:
     if not name.lower().endswith(".wav"):
         return None
     try:
-        with wave.open(str(file_path), "rb") as wav:
-            rate, width = wav.getframerate(), wav.getsampwidth()
-            frames = min(wav.getnframes(), rate * MAX_SECONDS)
-            seconds = wav.getnframes() / rate
-            if seconds < 1 or width not in (1, 2, 3, 4):
+        with open_wav(file_path) as wav:
+            rate = wav.rate
+            frames = min(wav.frames, rate * MAX_SECONDS)
+            seconds = wav.frames / rate
+            if seconds < 1:
                 return None  # too short to hold a bar of beats
             hop = max(1, round(rate / 172))  # frames per slice
             energy = []
             while len(energy) * hop < frames and (chunk := wav.readframes(hop)):
-                samples = _samples(chunk, width)
+                samples = _floats(chunk, wav.width) if wav.is_float else _samples(chunk, wav.width)
                 energy.append(sum(x * x for x in samples) / max(1, len(samples)))
     except _WAVE_ERRORS:
         return None
@@ -188,6 +190,14 @@ def _hits(energy: list[float], per_second: float) -> int:
             rise = 0.0
         previous = level
     return hits + (rise >= math.log(2))
+
+
+def _floats(chunk: bytes, width: int) -> array:
+    """Floating-point samples (full scale is -1.0 to 1.0)."""
+    samples = array("f" if width == 4 else "d", chunk[: len(chunk) // width * width])
+    if sys.byteorder == "big":
+        samples.byteswap()
+    return samples
 
 
 def _samples(chunk: bytes, width: int) -> array:
