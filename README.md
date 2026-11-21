@@ -221,6 +221,8 @@ The merge compares both sides with the last version they share. A file changed o
 | Browser app (`kit ui`) | done |
 | Desktop window (`kit app`) and a double-click build | done, not yet tried on Windows |
 | Hash cache, `.kitignore`, `kit verify` | done |
+| Drag sounds from the window into FL Studio (macOS); Show in Finder / Explorer | done |
+| Warnings for file names Windows cannot hold | done |
 | Hosted service: accounts, private and paid packs, download tracking | planned |
 | Waveforms for MP3, FLAC and float WAV files | planned |
 | Storing large audio compressed (FLAC) | planned |
