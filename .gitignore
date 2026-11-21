@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 demo_kit/
 .DS_Store
+dist/
+build/

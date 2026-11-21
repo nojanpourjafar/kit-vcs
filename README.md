@@ -61,6 +61,17 @@ kit app
 
 It starts on the home screen, with a button that opens the system's folder chooser. The window is the same page as `kit ui`, shown by [pywebview](https://pywebview.flowrl.com/) in the system's built-in web view, so no browser is bundled. `kit app --browser`, or running it without pywebview installed, uses the browser instead.
 
+### A double-click app
+
+`packaging/build_app.py` turns Kit into an app that needs no Terminal and no Python on the computer that runs it:
+
+```
+pip install -e ".[app]" pyinstaller
+python packaging/build_app.py
+```
+
+The result is `dist/Kit.app` on macOS and `dist/Kit/Kit.exe` on Windows. PyInstaller builds for the system it runs on, so the Windows app has to be built on Windows. The app is not signed: the first time it is opened on another Mac, macOS will refuse until it is allowed under System Settings > Privacy & Security.
+
 ## Sharing a kit
 
 A remote is anywhere a copy of the history can live. The simplest one is a folder: a USB drive, or a folder synced by Google Drive or Dropbox.
@@ -179,6 +190,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/ui.html` | The page: layout, styles and script in one file |
 | `src/kit/desktop.py` | `kit app`: the page in a native window, with a folder chooser |
 | `src/kit/cli.py` | The `kit` command |
+| `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 
 ## Roadmap
 
@@ -190,6 +202,7 @@ The merge compares both sides with the last version they share. A file changed o
 | S3 / R2 remote | done, not yet run against a real bucket |
 | Web page with waveforms and players | done |
 | Browser app (`kit ui`) | done |
+| Desktop window (`kit app`) and a double-click build | done, not yet tried on Windows |
 | Hash cache, `.kitignore`, `kit verify` | done |
 | Hosted service: accounts, private and paid packs, download tracking | planned |
 | Waveforms for MP3, FLAC and float WAV files | planned |
