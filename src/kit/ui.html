@@ -29,6 +29,10 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.badge.named { color: var(--accent); text-transform: none; letter-spacing: 0; }
+.names { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.names .badge button.link { margin-left: 4px; text-decoration: none; }
+.row.inline { margin-top: 0; }
 button.before { padding: 3px 9px; font-size: 12px; color: var(--modified); border-color: var(--modified); }
 .sound.hearing-before button.before { background: var(--modified); color: var(--card); }
 .name-line { margin: 10px 0 0; font-size: 13px; }
@@ -402,6 +406,19 @@ function renderNow() {
   $("#main").replaceChildren(...parts.filter(Boolean));
 }
 
+// Give a version a name ("1.0", "Sold on BeatStars"). The button opens into a box.
+function nameButton(version) {
+  const button = h("button", {type: "button", onclick: () => {
+    const input = h("input", {type: "text", "aria-label": "Name for this version", placeholder: "1.0 or Sold on BeatStars"});
+    button.replaceWith(h("form", {class: "row inline", onsubmit: (event) => {
+      event.preventDefault();
+      act("name-version", {version: version.id, name: input.value}, event.submitter);
+    }}, input, h("button", {class: "primary"}, "Name it")));
+    input.focus();
+  }}, "Name this version");
+  return button;
+}
+
 // Save a version as a plain zip in Downloads, for people who do not use Kit.
 function exportButton(id, label) {
   return h("button", {onclick: (event) => act("export", {version: id}, event.currentTarget)},
@@ -585,12 +602,16 @@ function toast(text, bad = false) {
 }
 
 // Run an action on the server, show what it said, then redraw from fresh state.
+// Actions that leave the folder as it was keep you on the screen you are on;
+// the others (saving, restoring, pulling...) go back to the folder as it is now.
+const STAY = new Set(["name-version", "unname", "export", "reveal"]);
+
 async function act(name, body, button) {
   if (button) button.disabled = true;
   try {
     const result = await api(`/api/${name}`, body || {});
     if (result.message) toast(result.message);
-    view = "now";
+    if (!STAY.has(name)) view = "now";
     if (name === "commit") draft = "";
     await refresh();
     return true;
@@ -633,16 +654,17 @@ function nameLine(text) {
 
 // ---- history and saved versions ----------------------------------------------
 
-function historyItem(id, label, text, sub) {
+function historyItem(id, label, text, sub, names = []) {
   return h("li", {}, h("button", {class: view === id ? "here" : "", onclick: () => { view = id; render(); }},
-    h("strong", {}, label), h("span", {}, text), sub && h("small", {}, sub)));
+    h("strong", {}, label, names.map((name) => h("span", {class: "badge named"}, name))),
+    h("span", {}, text), sub && h("small", {}, sub)));
 }
 
 function renderHistory() {
   const count = state.changes.length;
   $("#history").replaceChildren(
     historyItem("now", "Now", count ? plural(count, "unsaved change") : "everything saved"),
-    ...state.versions.map((v) => historyItem(v.id, v.label, `${v.author}: ${v.message}`, when(v.time))));
+    ...state.versions.map((v) => historyItem(v.id, v.label, `${v.author}: ${v.message}`, when(v.time), v.names)));
 }
 
 async function renderVersion(id) {
@@ -665,8 +687,14 @@ async function renderVersion(id) {
       onclick: (event) => act("restore", {version: version.id}, event.currentTarget)},
       `Put the folder back to ${version.label}`));
   }
-  buttons.append(exportButton(version.id, version.label));
+  buttons.append(exportButton(version.id, version.names[0] || version.label));
+  buttons.append(nameButton(version));
   box.append(buttons);
+  if (version.names.length) {
+    box.append(h("p", {class: "names"}, "Named ", version.names.map((name) =>
+      h("span", {class: "badge named"}, name, h("button", {class: "link", title: `Remove the name ${name}`,
+        "aria-label": `Remove the name ${name}`, onclick: (event) => act("unname", {name}, event.currentTarget)}, "×")))));
+  }
   $("#main").replaceChildren(...[box, soundSection(`Sounds in ${version.label}`, version.sounds),
     removedSection(`Removed in ${version.label}`, version.removed)].filter(Boolean));
 }

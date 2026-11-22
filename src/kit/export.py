@@ -19,7 +19,10 @@ from pathlib import Path
 from .repo import KitError, Repo
 
 def label(repo: Repo, commit_id: str) -> str:
-    """ "v3" for a version on the main line, the start of its ID otherwise."""
+    """The version's name if it has one ("1.0"), else "v3", else the start of its ID."""
+    names = repo.names_of(commit_id)
+    if names:
+        return names[0]
     history = repo.log()
     for i, commit in enumerate(history):
         if commit.id == commit_id:
@@ -40,7 +43,7 @@ def export(repo: Repo, ref: str, folder: Path) -> tuple[Path, int, int]:
         raise KitError("the zip cannot go inside the kit folder; choose a folder outside it")
     folder.mkdir(parents=True, exist_ok=True)
 
-    name = f"{repo.folder.name} {label(repo, commit_id)}"
+    name = f"{repo.folder.name} {label(repo, commit_id)}".replace("/", "-")  # a name may hold a slash
     out = folder / f"{name}.zip"
     when = datetime.fromisoformat(commit.time.replace("Z", "+00:00"))
     stamp = (max(when.year, 1980),) + tuple(when.timetuple())[1:6]  # zip dates start in 1980

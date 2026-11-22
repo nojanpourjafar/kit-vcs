@@ -146,8 +146,9 @@ def cmd_log(args) -> None:
         return
     for index, commit in enumerate(history):
         when = commit.time[:16].replace("T", " ")
+        named = "".join(f" [{name}]" for name in repo.names_of(commit.id))
         print(f"v{len(history) - index:<3} {commit.id[:8]}  {when} UTC  "
-              f"{commit.author}: {commit.message}")
+              f"{commit.author}: {commit.message}{named}")
 
 
 def cmd_diff(args) -> None:
@@ -196,6 +197,31 @@ def cmd_author(args) -> None:
         print(f"New versions will be credited to {repo.author}. Saved versions keep their credits.")
     else:
         print(repo.author)
+
+
+def cmd_name(args) -> None:
+    repo = Repo.find()
+    if args.remove:
+        name = " ".join(args.words)
+        repo.remove_name(name)
+        print(f"Removed the name {name}.")
+        return
+    if len(args.words) < 2:
+        raise KitError('say which version and the name, like: kit name v3 1.0')
+    version, name = args.words[0], " ".join(args.words[1:])
+    commit_id = repo.name_version(name, version)
+    print(f"Named {commit_id[:8]} {name.strip()}. Use it anywhere a version goes: kit export {name.strip()}")
+
+
+def cmd_names(args) -> None:
+    repo = Repo.find()
+    names = repo.names()
+    if not names:
+        print('No version has a name yet. Name one with: kit name v3 1.0')
+        return
+    labels = {c.id: f"v{len(repo.log()) - i}" for i, c in enumerate(repo.log())}
+    for name, commit_id in sorted(names.items()):
+        print(f"  {name:<24} {labels.get(commit_id, commit_id[:8])}")
 
 
 def cmd_remote(args) -> None:
@@ -338,6 +364,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("pull", help="get new versions from a remote, merging if needed")
     p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
     p.set_defaults(run=cmd_pull)
+
+    p = sub.add_parser("name", help="give a version a name, like: kit name v3 1.0")
+    p.add_argument("words", nargs="+", help="the version, then the name (or just the name with --remove)")
+    p.add_argument("--remove", action="store_true", help="remove a name instead")
+    p.set_defaults(run=cmd_name)
+
+    p = sub.add_parser("names", help="list the names given to versions")
+    p.set_defaults(run=cmd_names)
 
     p = sub.add_parser("author", help="show or change the producer name new versions are credited to")
     p.add_argument("name", nargs="*", help="the new name, like: kit author Lil Nojan")

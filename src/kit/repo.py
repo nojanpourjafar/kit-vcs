@@ -15,6 +15,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -160,7 +161,7 @@ class Repo:
         return {commit.id for commit in lineage(commit_id, self.load_commit)}
 
     def resolve(self, ref: str) -> str:
-        """Turn "v3", "latest" or the start of an ID into a full commit ID."""
+        """Turn "v3", "latest", a version's name ("1.0") or the start of an ID into a full commit ID."""
         ref = ref.strip().lower()
         if self.has_commit(ref):
             return ref
@@ -174,6 +175,9 @@ class Repo:
             if 1 <= number <= len(history):
                 return history[-number].id
             raise KitError(f"there is no {ref}; this repo has v1 to v{len(history)}")
+        for name, commit_id in self.names().items():
+            if name.lower() == ref:
+                return commit_id
         everything = self.ancestors(history[0].id)
         matches = [commit_id for commit_id in everything if ref and commit_id.startswith(ref)]
         if len(matches) == 1:
@@ -283,6 +287,52 @@ class Repo:
                 {"path": path, "theirs": beside, "author": their_author} for path, beside in sorted(kept.items())
             ])
         return Merged("merge", commit, diff(ours, merged), conflicts)
+
+    # ---- names for versions ---------------------------------------------------
+
+    def names(self) -> dict[str, str]:
+        """Names given to versions, like {"1.0": commit ID}. Kept in .kit/names.json."""
+        try:
+            data = json.loads((self.dir / "names.json").read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {name: commit_id for name, commit_id in data.items()
+                if isinstance(name, str) and isinstance(commit_id, str) and self.has_commit(commit_id)}
+
+    def names_of(self, commit_id: str) -> list[str]:
+        return sorted(name for name, named in self.names().items() if named == commit_id)
+
+    def name_version(self, name: str, ref: str) -> str:
+        """Give a version a name, like "1.0" or "BeatStars release". Returns the commit ID.
+
+        One name means one version: a name already used for another version is
+        refused rather than moved, so "1.0" never quietly changes meaning.
+        """
+        name = clean_name(name)
+        if name.lower() in ("latest", "head") or re.fullmatch(r"v\d+", name.lower()):
+            raise KitError(f"{name} already means something to Kit; pick a name like 1.0 or Sold on BeatStars")
+        commit_id = self.resolve(ref)
+        names = self.names()
+        same = next((existing for existing in names if existing.lower() == name.lower()), None)
+        if same is not None and names[same] != commit_id:
+            raise KitError(f"{same} already names another version; remove that name first")
+        names.pop(same, None)
+        names[name] = commit_id
+        self._save_names(names)
+        return commit_id
+
+    def remove_name(self, name: str) -> None:
+        names = self.names()
+        same = next((existing for existing in names if existing.lower() == name.strip().lower()), None)
+        if same is None:
+            raise KitError(f"no version is named {name.strip()}")
+        del names[same]
+        self._save_names(names)
+
+    def _save_names(self, names: dict[str, str]) -> None:
+        _atomic_write(self.dir / "names.json", json.dumps(dict(sorted(names.items())), indent=2).encode())
 
     # ---- conflicts ----------------------------------------------------------
 

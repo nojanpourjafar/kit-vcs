@@ -166,7 +166,7 @@ class App:
             "remote": repo.remote(),
             "versions": [
                 {"label": labels[c.id], "id": c.id, "author": c.author, "message": c.message,
-                 "time": c.time, "merge": bool(c.merged)}
+                 "time": c.time, "merge": bool(c.merged), "names": repo.names_of(c.id)}
                 for c in history
             ],
             "changes": [vars(change) for change in changes],
@@ -191,7 +191,7 @@ class App:
         return {
             "label": labels.get(commit.id, commit.id[:8]),
             "id": commit.id, "author": commit.author, "message": commit.message,
-            "time": commit.time, "latest": commit.id == repo.head(),
+            "time": commit.time, "latest": commit.id == repo.head(), "names": repo.names_of(commit.id),
             "sounds": self._sounds(manifest, changes, by_hash, labels,
                                    locate=lambda path, entry: repo.store.path_for(entry["hash"]),
                                    key="hash", before=repo.manifest_of(commit.parent)),
@@ -368,6 +368,12 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "name-version":
+            repo.name_version(body.get("name", ""), body.get("version", ""))
+            return {"message": f"Named it {body.get('name', '').strip()}."}
+        if action == "unname":
+            repo.remove_name(body.get("name", ""))
+            return {"message": f"Removed the name {body.get('name', '').strip()}."}
         if action == "resolve":
             done = repo.settle(body.get("path", ""), body.get("keep", ""))
             return {"message": done + " Save a version to share the choice."}

@@ -134,6 +134,8 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit diff v1 v2` | Show what changed between two versions |
 | `kit restore v1` | Put the folder back to an earlier version |
 | `kit credits` | Show who first added each sound, and the split |
+| `kit name v3 1.0` | Give a version a name; names work anywhere a version does (`kit export 1.0`) |
+| `kit names` | List the names given to versions |
 | `kit author [name]` | Show or change the producer name new versions are credited to |
 | `kit ui` | Open Kit as an app in your browser |
 | `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
@@ -146,7 +148,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit clone <where> [folder]` | Make a new kit folder from a remote |
 | `kit verify` | Check that nothing stored is damaged or missing |
 
-Versions can be named as `v1`, `v2`, ..., as `latest`, or by the start of their ID. `where` is a folder path or `s3://bucket/prefix`.
+Versions can be named as `v1`, `v2`, ..., as `latest`, by a name given with `kit name` ("1.0", "Sold on BeatStars"), or by the start of their ID. `where` is a folder path or `s3://bucket/prefix`.
 
 A `.kitignore` file in the kit folder lists things to leave out, one pattern per line: `*.asd` for a file type, `Drafts/` for a folder.
 
