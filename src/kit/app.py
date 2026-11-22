@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import names, remote, tags
 from .audio import describe
-from .audio import peaks, tempo
+from .audio import note, peaks, tempo
 from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author, clean_name
 
@@ -80,6 +80,7 @@ class App:
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
         self._tempo: dict[str, float | None] = {}
+        self._note: dict[str, str | None] = {}
         self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
         if folder is not None:
             if not Path(folder).is_dir():
@@ -258,6 +259,24 @@ class App:
         if key not in self._tempo:
             self._tempo[key] = tempo(path, name)
         return self._tempo[key]
+
+    def note(self, query: dict) -> str | None:
+        """The note a one-shot plays, from its audio (remembered like the tempo)."""
+        path, name = self.locate(query)
+        stat = path.stat()
+        key = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if key not in self._note:
+            self._note[key] = note(path, name)
+        return self._note[key]
+
+    def listen(self, query: dict) -> dict:
+        """What the audio says about a sound: a tempo for a loop, or a note for a one-shot.
+
+        Only sounds with no beat are asked for a note. A melody loop has a
+        pitch at every moment, but its first note says nothing about its key.
+        """
+        bpm = self.tempo(query)
+        return {"bpm": bpm, "note": None if bpm else self.note(query)}
 
     # ---- actions ---------------------------------------------------------
 
@@ -456,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
             # No lock: this answers while a long scan holds it.
             return self._json(200, self.app.progress)
         if url.path == "/api/tempo":
-            return self._run(lambda: {"bpm": self.app.tempo(query)}, lock=False)
+            return self._run(lambda: self.app.listen(query), lock=False)
         if url.path == "/api/peaks":
             # No lock either: a FLAC file is decoded in Python, which can take
             # seconds for a long one, and that must not hold up saving.

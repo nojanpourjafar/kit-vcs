@@ -754,26 +754,35 @@ function waveBox(row, sound) {
   box.dataset.source = sound.source;
   box.load = () => {  // called once the row is near the screen
     drawWave(box);
-    if (!sound.bpm) detectTempo(row, sound);
+    if (!sound.bpm) listen(row, sound);
   };
   nearScreen.observe(box);
   return box;
 }
 
-// A loop with no tempo in its name gets one estimated from its audio, in the
-// background. It is shown as "≈140 BPM" because it is an estimate: when it is
-// off, it is most often by half or double.
-async function detectTempo(row, sound) {
-  let bpm = null;
+// A sound with no tempo in its name is listened to in the background. A loop
+// gets a tempo, shown as "≈140 BPM" because it is an estimate (when it is off,
+// it is most often by half or double). A one-shot with no key in its name gets
+// the note it plays, shown as "≈F#", so an 808 can be matched to the song.
+async function listen(row, sound) {
+  let heard = null;
   try {
-    bpm = (await api(`/api/tempo?${sound.source}`)).bpm;
+    heard = await api(`/api/tempo?${sound.source}`);
   } catch (error) {
     return;
   }
-  if (!bpm || !row.isConnected) return;  // no clear beat, or the screen was redrawn meanwhile
-  const shown = Math.round(bpm);
-  row.querySelector(".info").append(` · ≈${shown} BPM`);
-  row.dataset.search += ` | ${shown} | ${shown}bpm`;
+  if (!row.isConnected) return;  // the screen was redrawn meanwhile
+  const info = row.querySelector(".info");
+  if (heard.bpm) {
+    const shown = Math.round(heard.bpm);
+    info.append(` · ≈${shown} BPM`);
+    row.dataset.search += ` | ${shown} | ${shown}bpm`;
+  } else if (heard.note && !sound.key) {
+    info.append(` · ≈${heard.note}`);
+    row.dataset.search += ` | ${heard.note.toLowerCase()}`;
+  } else {
+    return;  // nothing clear to show
+  }
   const none = row.closest("section").querySelector(".none");
   if (none) filter(row.parentElement, none);  // it may match the search now
 }
