@@ -93,10 +93,21 @@ class App:
             self.folder = Repo.find(folder).folder  # a subfolder opens the kit it belongs to
         except KitError:
             self.folder = Path(folder).resolve()  # not a repo yet; the page will say so
-        recent = [str(self.folder)] + [path for path in self._recent_paths() if path != str(self.folder)]
+        self._save_recent([str(self.folder)] + [path for path in self._recent_paths() if path != str(self.folder)])
+
+    def forget(self, folder: str) -> str:
+        """Take a kit off the home screen's list. The folder itself is not touched."""
+        paths = self._recent_paths()
+        kept = [path for path in paths if path != folder]
+        if len(kept) == len(paths):
+            raise KitError(f"{folder} is not in the list")
+        self._save_recent(kept)
+        return Path(folder).name
+
+    def _save_recent(self, paths: list[str]) -> None:
         try:
             config_dir().mkdir(parents=True, exist_ok=True)
-            (config_dir() / "recent.json").write_text(json.dumps(recent[:MAX_RECENT]))
+            (config_dir() / "recent.json").write_text(json.dumps(paths[:MAX_RECENT]))
         except OSError:
             pass  # the list of recent kits is a convenience, never a reason to fail
 
@@ -323,6 +334,9 @@ class App:
         if action == "close":
             self.folder = None
             return {"message": ""}
+        if action == "forget":
+            name = self.forget(body.get("folder") or "")
+            return {"message": f"Removed {name} from the list. The folder and its sounds are untouched."}
         if action == "clone":
             return self._clone(body)
         if action == "name":

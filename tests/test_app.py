@@ -348,3 +348,24 @@ def test_a_modified_sound_can_be_heard_as_it_was(app, kit):
     assert body == b"KICK" * 100                                        # in a version, before = its parent
     first = {s["path"]: s for s in app.json("/api/version?ref=v1")["sounds"]}
     assert all(s["before"] is None for s in first.values())            # the first version has no before
+
+
+def test_a_kit_can_be_taken_off_the_list_without_touching_it(home, kit, tmp_path):
+    Repo.init(kit, author="Nojan")
+    other = tmp_path / "loops"
+    other.mkdir()
+    for folder in (kit, other):
+        home("/api/open", {"folder": str(folder)})
+    home("/api/close", {})
+    listed = {k["name"]: k["folder"] for k in home("/api/state")[1]["recent"]}
+
+    status, body = home("/api/forget", {"folder": listed["kit"]})
+    assert status == 200 and body["message"].startswith("Removed kit from the list")
+    assert [k["name"] for k in home("/api/state")[1]["recent"]] == ["loops"]
+    assert (kit / ".kit").is_dir() and (kit / "Kicks" / "kick_01.wav").exists()   # only the entry went
+
+    assert home("/api/forget", {"folder": listed["kit"]})[0] == 400                 # already gone
+    assert home("/api/forget", {})[0] == 400
+    home("/api/open", {"folder": str(kit)})                                         # opening it brings it back
+    home("/api/close", {})
+    assert [k["name"] for k in home("/api/state")[1]["recent"]] == ["kit", "loops"]
