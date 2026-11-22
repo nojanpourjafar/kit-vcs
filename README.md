@@ -194,7 +194,7 @@ The merge compares both sides with the last version they share. A file changed o
 - `kit restore` does not rewrite history. It puts the files back and leaves `HEAD` alone, so the rollback shows up as ordinary changes that can be committed as a new version.
 - Credits use your producer name. The app asks for it once (home screen: "Your sounds are credited to … · Change") and uses it for every kit you start or get; under the save box you can change it for one kit. Changing it never rewrites the credits of versions already saved.
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
-- Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV and AIFF files (8- to 32-bit integer, or float).
+- Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV, AIFF and FLAC files (8- to 32-bit integer, or float).
 - Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.
 - `kit status` does not re-hash files whose size and modified time are unchanged, which keeps it fast on large kits. Files modified in the last two seconds are always re-hashed. The first read of a big kit, before anything is cached, shows its progress: a bar in the app, one updating line in the terminal.
 - Paths in a manifest that point outside the kit folder are refused, since manifests can come from other people.
@@ -214,6 +214,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/remote.py` | Folder remote, push, pull, clone |
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
+| `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
 | `src/kit/audio.py` | WAV length, sample rate and waveform outline |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
 | `src/kit/report.py` | The `kit show` web page |
@@ -246,7 +247,8 @@ The merge compares both sides with the last version they share. A file changed o
 | Hosted service: accounts, private and paid packs, download tracking | planned |
 | WAV files with float samples or the extensible header (own WAV reader) | done |
 | AIFF and AIFC files | done |
-| Waveforms for MP3 and FLAC files | planned |
+| FLAC files (decoded in plain Python) | done |
+| Waveforms for MP3 files | planned |
 | Storing large audio compressed (FLAC) | planned |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.

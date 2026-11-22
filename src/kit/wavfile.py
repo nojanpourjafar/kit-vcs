@@ -19,7 +19,7 @@ from __future__ import annotations
 import struct
 from pathlib import Path
 
-READABLE = (".wav", ".aif", ".aiff", ".aifc")
+READABLE = (".wav", ".aif", ".aiff", ".aifc", ".flac")
 PCM, FLOAT, EXTENSIBLE = 1, 3, 0xFFFE
 _SIGNED_TO_UNSIGNED = bytes((value + 128) % 256 for value in range(256))  # 8-bit AIFF -> 8-bit WAV
 
@@ -175,10 +175,16 @@ def _extended(raw: bytes) -> float:
 
 
 def open_wav(path) -> _Sound:
-    """Open a WAV or AIFF file, telling them apart by their first four bytes."""
+    """Open a WAV, AIFF or FLAC file, telling them apart by their first four bytes."""
+    from .flac import id3_length, open_flac  # FLAC is decoded in Python (see flac.py)
+
     path = Path(path)
     with open(path, "rb") as f:
-        magic = f.read(4)
+        head = f.read(10)
+        f.seek(id3_length(head))  # an ID3 tag can sit in front of a FLAC file
+        magic = f.read(4) if head[:3] == b"ID3" else head[:4]
     if magic == b"FORM":
         return Aiff(path)
+    if magic == b"fLaC":
+        return open_flac(path)
     return Wav(path)

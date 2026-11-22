@@ -458,7 +458,9 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/tempo":
             return self._run(lambda: {"bpm": self.app.tempo(query)}, lock=False)
         if url.path == "/api/peaks":
-            return self._run(lambda: {"peaks": self.app.peaks(query)})
+            # No lock either: a FLAC file is decoded in Python, which can take
+            # seconds for a long one, and that must not hold up saving.
+            return self._run(lambda: {"peaks": self.app.peaks(query)}, lock=False)
         if url.path == "/api/audio":
             return self._audio(query)
         if url.path == "/api/dev" and self.app.dev:

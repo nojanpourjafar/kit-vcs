@@ -1,7 +1,7 @@
 """Reading audio files: length, sample rate, a waveform outline, and tempo.
 
-Standard library only. It reads WAV and AIFF files (integer and floating-point
-samples, see wavfile.py) and quietly gives up on anything else (MP3, FLAC).
+Standard library only. It reads WAV, AIFF and FLAC files (see wavfile.py and
+flac.py) and quietly gives up on anything else (MP3, AAC).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .wavfile import WavError, can_read, open_wav
 
-_WAVE_ERRORS = (WavError, EOFError, OSError, ZeroDivisionError, ValueError, struct.error)
+_WAVE_ERRORS = (WavError, EOFError, OSError, ZeroDivisionError, ValueError, struct.error, IndexError)
 
 
 def describe(file_path: Path, name: str) -> str | None:
