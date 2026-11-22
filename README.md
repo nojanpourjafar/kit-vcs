@@ -4,6 +4,8 @@
 
 Git-style version control for sample packs and loop kits.
 
+![Opening a kit, hearing a sound before and after a change, starring sounds, saving a version and comparing it with an older one](docs/demo.gif)
+
 Keep your kit folder exactly as it is. `kit` remembers every version of it, shows what changed between versions, rolls back, shares the kit with other producers, merges their changes into yours, and records who added each sound.
 
 ## Why
@@ -61,9 +63,13 @@ kit ui
 
 It opens Kit in your browser. The folder's sounds are listed with waveforms and play buttons, unsaved changes are marked, and there are buttons to save a version, look at or go back to an older one, and push and pull. Everything runs on your own computer: `kit ui` starts a small server that only your machine can reach, and stops when you press Ctrl+C in the terminal.
 
-`kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
+`kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them. The × beside a kit takes it off the list; the folder itself is not touched.
 
-A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`; see below for how reliable that is. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
+A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`, and one-shots whose names give no key get the note they play, shown as `≈F#`, so an 808 can be matched to the key of a song; see below for how reliable both are. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, S stars it, and Enter in the search box plays the first match.
+
+The ☆ on each sound stars it, and **★ Starred** beside the search box shows only the starred ones. Stars are yours alone: they stay in your copy of the kit and are never pushed.
+
+A saved version is shown compared with the one before it. The **Compared with** box picks any older version instead, and the badges, the list of removed sounds and the Before buttons all follow, so it shows everything that changed since, say, the version you last sent someone.
 
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
@@ -172,6 +178,7 @@ MyKit/
     HEAD                      ID of the latest version
     config.json               author name and default remote
     index.json                cache of file hashes
+    stars.json                your starred sounds (never pushed)
 ```
 
 **Sync sends only what is missing.**
@@ -195,6 +202,7 @@ The merge compares both sides with the last version they share. A file changed o
 - Credits use your producer name. The app asks for it once (home screen: "Your sounds are credited to … · Change") and uses it for every kit you start or get; under the save box you can change it for one kit. Changing it never rewrites the credits of versions already saved.
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
 - Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV, AIFF and FLAC files (8- to 32-bit integer, or float).
+- Note detection compares a stretch of the sound with itself shifted by each possible period and takes the shortest shift at which it lines up almost exactly: one cycle of the note (the YIN method). It starts 60 ms after the loudest point, past the attack and an 808's slide into the note. A chord also repeats, but only at a period far below its notes, where nothing actually sounds, so a note is given only when a real share of the sound's energy is at that pitch. Snares and hats never line up well enough and get none. On generated sounds it named 120 of 120 808s correctly (sliding, up to 40 cents out of tune, heavily distorted) and 35 of 36 synth notes from C3 to B5; the one miss gave no answer. Chords, snares and hats got no note. A kick whose pitch falls fast can come out a step away from its body's note. It has not yet been measured on real sample packs.
 - Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.
 - `kit status` does not re-hash files whose size and modified time are unchanged, which keeps it fast on large kits. Files modified in the last two seconds are always re-hashed. The first read of a big kit, before anything is cached, shows its progress: a bar in the app, one updating line in the terminal.
 - Paths in a manifest that point outside the kit folder are refused, since manifests can come from other people.
@@ -215,7 +223,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
 | `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
-| `src/kit/audio.py` | WAV length, sample rate and waveform outline |
+| `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
 | `src/kit/report.py` | The `kit show` web page |
 | `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
@@ -227,6 +235,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 | `scripts/release.py` | Publishes a new version (`make release`) |
 | `scripts/measure.py` | Measures Kit on a real kit folder, read only (`make measure`) |
+| `scripts/demo_gif.py` | Records `docs/demo.gif` by clicking through the app in a hidden browser |
 | `Makefile` | Short commands for common tasks |
 | `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
 
@@ -248,6 +257,8 @@ The merge compares both sides with the last version they share. A file changed o
 | WAV files with float samples or the extensible header (own WAV reader) | done |
 | AIFF and AIFC files | done |
 | FLAC files (decoded in plain Python) | done |
+| Note of one-shots from their audio | done |
+| Stars, and comparing a version with any older one | done |
 | Waveforms for MP3 files | planned |
 | Storing large audio compressed (FLAC) | planned |
 
@@ -271,6 +282,14 @@ make dev                     # the same, but it reloads when ui.html is saved, w
 make build                   # build the double-click app into dist/
 make measure KIT=~/Music/MyKit   # read-only report: speed, space, duplicates, tempo accuracy
 make release VERSION=0.6.0   # test, set the version, commit, tag and push; GitHub builds the apps
+```
+
+The GIF at the top is recorded by `scripts/demo_gif.py`, which builds three kits of synthesized sounds in a temporary folder and clicks through the app in a hidden browser. Run it again after changing the page:
+
+```
+pip install playwright pillow
+python -m playwright install chromium
+python scripts/demo_gif.py docs/demo.gif
 ```
 
 GitHub runs the same tests on macOS, Windows and Linux, with Python 3.10 and 3.13, on every push (`.github/workflows/tests.yml`).
