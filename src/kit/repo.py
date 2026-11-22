@@ -70,7 +70,7 @@ class Repo:
             raise KitError(f"{repo.folder} is already a Kit repo")
         repo.store.root.mkdir(parents=True)
         repo.commits_dir.mkdir()
-        repo._save_config({"format": 1, "author": author or _default_author()})
+        repo._save_config({"format": 1, "author": clean_name(author) if author else _default_author()})
         return repo
 
     @classmethod
@@ -91,6 +91,10 @@ class Repo:
     @property
     def author(self) -> str:
         return self._config()["author"]
+
+    def set_author(self, name: str) -> None:
+        """Change who new versions are credited to. Saved versions keep their credits."""
+        self._save_config({**self._config(), "author": clean_name(name)})
 
     def remote(self) -> str | None:
         """The saved default remote, as the user typed it."""
@@ -412,6 +416,16 @@ class Repo:
         while folder != self.folder and folder.is_dir() and not any(folder.iterdir()):
             folder.rmdir()
             folder = folder.parent
+
+
+def clean_name(name: str) -> str:
+    """A producer name as it will appear in credits: trimmed, one line, not empty, not too long."""
+    name = " ".join((name or "").split())  # also turns tabs and new lines into single spaces
+    if not name:
+        raise KitError("a producer name cannot be empty")
+    if len(name) > 40:
+        raise KitError("a producer name can be at most 40 characters")
+    return name
 
 
 def _default_author() -> str:

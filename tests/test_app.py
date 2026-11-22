@@ -187,7 +187,8 @@ def home(tmp_path):
 
 
 def test_the_home_screen_opens_kits_and_remembers_them(home, kit, tmp_path):
-    assert home("/api/state")[1] == {"home": True, "recent": []}
+    start = home("/api/state")[1]
+    assert start["home"] is True and start["recent"] == [] and start["name"]  # a name is always offered
     assert home("/api/commit", {"message": "x"})[0] == 400          # nothing is open yet
 
     Repo.init(kit, author="Nojan")

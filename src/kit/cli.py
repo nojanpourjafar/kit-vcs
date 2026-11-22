@@ -189,6 +189,15 @@ def cmd_credits(args) -> None:
         for author, count in sorted(share.items(), key=lambda item: -item[1])))
 
 
+def cmd_author(args) -> None:
+    repo = Repo.find()
+    if args.name:
+        repo.set_author(" ".join(args.name))
+        print(f"New versions will be credited to {repo.author}. Saved versions keep their credits.")
+    else:
+        print(repo.author)
+
+
 def cmd_remote(args) -> None:
     repo = Repo.find()
     if args.remote:
@@ -329,6 +338,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("pull", help="get new versions from a remote, merging if needed")
     p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
     p.set_defaults(run=cmd_pull)
+
+    p = sub.add_parser("author", help="show or change the producer name new versions are credited to")
+    p.add_argument("name", nargs="*", help="the new name, like: kit author Lil Nojan")
+    p.set_defaults(run=cmd_author)
 
     p = sub.add_parser("resolve", help="settle a sound both sides changed: keep mine, theirs or both")
     p.add_argument("path", help="the sound, as kit status lists it")

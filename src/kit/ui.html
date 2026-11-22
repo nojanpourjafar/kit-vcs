@@ -29,6 +29,8 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.name-line { margin: 10px 0 0; font-size: 13px; }
+button.link { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; }
 .meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 4px; }
 .meter div { height: 100%; background: var(--accent); transition: width .3s; }
 #remote-label .sync { color: var(--accent); font-weight: 600; }
@@ -482,6 +484,7 @@ function renderHome() {
   } else {
     box.append(h("p", {class: "muted"}, "No kits yet. Open a folder of sounds to start."));
   }
+  box.append(nameLine(`Your sounds are credited to ${state.name}`));
   if (inDesktopApp()) {
     box.append(h("div", {class: "row"}, h("button", {class: "primary", onclick: async (event) => {
       const folder = await window.pywebview.api.pick_folder();
@@ -597,10 +600,28 @@ function saveForm() {
   const message = h("input", {type: "text", "aria-label": "What changed",
     placeholder: "What changed? For example: added 5 hats", value: draft,
     oninput: (event) => { draft = event.target.value; }});
-  return h("form", {class: "row", onsubmit: (event) => {
-    event.preventDefault();
-    act("commit", {message: message.value}, event.submitter);
-  }}, message, h("button", {class: "primary"}, "Save version"));
+  return h("div", {},
+    h("form", {class: "row", onsubmit: (event) => {
+      event.preventDefault();
+      act("commit", {message: message.value}, event.submitter);
+    }}, message, h("button", {class: "primary"}, "Save version")),
+    nameLine(`Saving as ${state.author}`));
+}
+
+// "Saving as Nojan · Change": a small line that opens into a box to change the
+// producer name that new versions are credited to.
+function nameLine(text) {
+  const line = h("p", {class: "muted name-line"}, text, " · ");
+  line.append(h("button", {class: "link", type: "button", onclick: () => {
+    const input = h("input", {type: "text", "aria-label": "Producer name", value: state.author || state.name});
+    line.replaceChildren(h("form", {class: "row", onsubmit: (event) => {
+      event.preventDefault();
+      act("name", {name: input.value}, event.submitter);
+    }}, input, h("button", {class: "primary"}, "Save name")));
+    input.focus();
+    input.select();
+  }}, "Change"));
+  return line;
 }
 
 // ---- history and saved versions ----------------------------------------------

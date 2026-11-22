@@ -134,6 +134,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit diff v1 v2` | Show what changed between two versions |
 | `kit restore v1` | Put the folder back to an earlier version |
 | `kit credits` | Show who first added each sound, and the split |
+| `kit author [name]` | Show or change the producer name new versions are credited to |
 | `kit ui` | Open Kit as an app in your browser |
 | `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
 | `kit show [v2]` | Write a version out as a single web page you can send to someone |
@@ -187,6 +188,7 @@ The merge compares both sides with the last version they share. A file changed o
 
 - Files are written to a temporary name and then renamed, so a crash never leaves half a file. `HEAD` always moves last, so a failed save leaves the previous version current.
 - `kit restore` does not rewrite history. It puts the files back and leaves `HEAD` alone, so the rollback shows up as ordinary changes that can be committed as a new version.
+- Credits use your producer name. The app asks for it once (home screen: "Your sounds are credited to … · Change") and uses it for every kit you start or get; under the save box you can change it for one kit. Changing it never rewrites the credits of versions already saved.
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
 - Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV and AIFF files (8- to 32-bit integer, or float).
 - Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.

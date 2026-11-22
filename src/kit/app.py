@@ -29,7 +29,7 @@ from . import names, remote, tags
 from .audio import describe
 from .audio import peaks, tempo
 from .manifest import diff
-from .repo import DIR, KitError, Repo, _default_author
+from .repo import DIR, KitError, Repo, _default_author, clean_name
 
 PAGE = Path(__file__).with_name("ui.html")
 MAX_RECENT = 12
@@ -99,6 +99,23 @@ class App:
         except OSError:
             pass  # the list of recent kits is a convenience, never a reason to fail
 
+    def name(self) -> str:
+        """The producer name for new kits: the one set in the app, else the computer's user name."""
+        try:
+            saved = json.loads((config_dir() / "settings.json").read_text()).get("name")
+        except (OSError, ValueError, AttributeError):
+            saved = None
+        return saved if isinstance(saved, str) and saved.strip() else _default_author()
+
+    def set_name(self, name: str) -> str:
+        name = clean_name(name)
+        try:
+            config_dir().mkdir(parents=True, exist_ok=True)
+            (config_dir() / "settings.json").write_text(json.dumps({"name": name}))
+        except OSError:
+            pass  # the open kit still gets the name below; only the default for new kits is lost
+        return name
+
     def _recent_paths(self) -> list[str]:
         try:
             paths = json.loads((config_dir() / "recent.json").read_text())
@@ -130,10 +147,10 @@ class App:
     def state(self) -> dict:
         """Everything the "Now" screen shows, or the home screen when no kit is open."""
         if self.folder is None:
-            return {"home": True, "recent": self.recent()}
+            return {"home": True, "recent": self.recent(), "name": self.name()}
         if not (self.folder / DIR).is_dir():
             return {"repo": False, "name": self.folder.name, "folder": str(self.folder),
-                    "author": _default_author()}
+                    "author": self.name()}
         repo = self.repo()
         history = repo.log()
         labels = {c.id: f"v{len(history) - i}" for i, c in enumerate(history)}
@@ -260,7 +277,7 @@ class App:
             raise KitError("choose where to put the kit")
         spec = remote.find_shared(remote.normalize(spec))
         name = spec.rstrip("/").rsplit("/", 1)[-1].rsplit("\\", 1)[-1] or "shared kit"
-        repo, result = remote.clone(spec, Path(into).expanduser() / name)
+        repo, result = remote.clone(spec, Path(into).expanduser() / name, author=self.name())
         self.open(repo.folder)
         return {"message": f"Got {name}: {result.commits} version(s)."}
 
@@ -280,6 +297,11 @@ class App:
             return {"message": ""}
         if action == "clone":
             return self._clone(body)
+        if action == "name":
+            name = self.set_name(body.get("name", ""))
+            if self.folder is not None and (self.folder / DIR).is_dir():
+                self.repo().set_author(name)
+            return {"message": f"You'll be credited as {name}."}
         if self.folder is None:
             raise KitError("open a kit folder first")
         if action == "reveal":
@@ -290,8 +312,9 @@ class App:
                 raise KitError(f"could not open the file browser ({err.strerror or err})") from err
             return {"message": ""}
         if action == "init":
-            Repo.init(self.folder, author=(body.get("author") or "").strip() or None)
-            return {"message": "Started tracking this folder."}
+            name = self.set_name(body.get("author") or self.name())
+            Repo.init(self.folder, author=name)
+            return {"message": f"Started tracking this folder. Sounds you add are credited to {name}."}
         repo = self.repo()
         if action == "commit":
             saved = repo.commit(body.get("message", ""))

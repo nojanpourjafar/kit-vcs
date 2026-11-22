@@ -70,7 +70,8 @@ def test_without_pywebview_it_falls_back_to_the_browser(tmp_path):
         page = urllib.request.urlopen(url).read().decode()
         token = re.search(r'const TOKEN = "([^"]+)"', page).group(1)
         request = urllib.request.Request(url + "api/state", headers={"X-Kit-Token": token})
-        assert json.loads(urllib.request.urlopen(request).read()) == {"home": True, "recent": []}
+        state = json.loads(urllib.request.urlopen(request).read())
+        assert state["home"] is True and state["recent"] == []
     finally:
         process.terminate()
         process.wait()
