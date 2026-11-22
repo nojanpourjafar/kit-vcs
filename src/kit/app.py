@@ -151,6 +151,7 @@ class App:
             "reveal": REVEAL_LABEL,
             "warnings": names.warnings(working),
             "conflicts": repo.conflicts(),
+            "sync": self._sync(repo),
         }
 
     def version(self, ref: str) -> dict:
@@ -225,6 +226,21 @@ class App:
         return self._tempo[key]
 
     # ---- actions ---------------------------------------------------------
+
+    def _sync(self, repo: Repo) -> dict | None:
+        """What there is to push and pull, for a shared folder.
+
+        Only for folder remotes: they are files on this computer (or a synced
+        Drive folder), so checking is quick. An S3 bucket would mean network
+        requests every time the screen is redrawn, so it is not checked.
+        """
+        spec = repo.remote()
+        if not spec or spec.startswith("s3://"):
+            return None
+        try:
+            return remote.compare(repo, remote.open_remote(spec))
+        except (OSError, ValueError, KitError):
+            return None  # the shared folder is offline or unreadable right now
 
     def _clone(self, body: dict) -> dict:
         """Get a kit someone shared: copy it from the shared folder into a new folder, and open it."""

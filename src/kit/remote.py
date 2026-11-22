@@ -166,6 +166,20 @@ class SyncResult:
     conflicts: list[str] = field(default_factory=list)  # pull only: paths where both versions were kept
 
 
+def compare(repo: Repo, remote: Remote) -> dict:
+    """How far apart the kit and the remote are, without changing either.
+
+    {"ahead": versions here the remote lacks (to push),
+     "behind": versions on the remote this kit lacks (to pull),
+     "from": who saved those}. Only small version files are read, never audio.
+    """
+    ahead = len(lineage(repo.head(), repo.load_commit, have=remote.has_commit))
+    remote_head = remote.read_head()
+    incoming = lineage(remote_head, lambda commit_id: parse_commit(remote.read_commit(commit_id)),
+                       have=repo.has_commit) if remote_head else []
+    return {"ahead": ahead, "behind": len(incoming), "from": sorted({c.author for c in incoming})}
+
+
 def push(repo: Repo, remote: Remote) -> SyncResult:
     """Send the versions the remote is missing, uploading only audio it lacks."""
     head = repo.head()

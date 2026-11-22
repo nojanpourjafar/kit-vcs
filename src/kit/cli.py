@@ -95,8 +95,24 @@ def _print_conflicts(repo) -> None:
         print("Choose with: kit resolve <path> --keep mine|theirs|both")
 
 
+def _print_sync(repo) -> None:
+    spec = repo.remote()
+    if not spec or spec.startswith("s3://"):
+        return  # checking a bucket means network requests; `kit pull` will tell
+    try:
+        sync = remote.compare(repo, remote.open_remote(spec))
+    except (OSError, ValueError, KitError):
+        print(f"Shared folder {spec} cannot be read right now.")
+        return
+    if sync["behind"]:
+        print(f"{sync['behind']} new version(s) from {' and '.join(sync['from'])}: run kit pull")
+    if sync["ahead"]:
+        print(f"{sync['ahead']} version(s) not shared yet: run kit push")
+
+
 def cmd_status(args) -> None:
     repo = Repo.find()
+    _print_sync(repo)
     _print_conflicts(repo)
     changes = repo.status()
     history = repo.log()

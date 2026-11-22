@@ -176,6 +176,8 @@ MyKit/
 
 A shared folder that already holds other things (your whole Google Drive, say) gets a folder of its own for the kit, named after it, so Kit's files never mix with yours; an empty folder or an existing shared kit is used as it is. Getting or pulling from a folder that only *contains* a shared kit finds the kit inside it.
 
+The app's header shows what there is to sync with a shared folder ("2 to push", "1 new from Lucas") and highlights Pull or Push; `kit status` says the same. Only the small version files are read for this, never audio, and S3 buckets are not checked, since that would mean network requests on every redraw.
+
 `push` refuses when the remote holds versions the local repo has never seen, because moving `HEAD` would cut them out of the history. Pull first, then push.
 
 **Merging is three-way, per file.**

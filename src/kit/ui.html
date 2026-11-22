@@ -29,6 +29,7 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+#remote-label .sync { color: var(--accent); font-weight: 600; }
 .stack { display: grid; gap: 12px; margin-top: 12px; }
 .stack label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 .stack .row { margin-top: 0; } .stack .row input { flex: 1; }
@@ -713,7 +714,18 @@ function seek(row, sound, event) {
 // ---- sharing: remote, push, pull, and who added what ------------------------------
 
 function renderRemote() {
-  $("#remote-label").textContent = state.remote ? `Shared with ${state.remote}` : "Not shared yet";
+  const label = $("#remote-label");
+  label.textContent = state.remote ? `Shared in ${state.remote.split(/[\\/]/).pop()}` : "Not shared yet";
+  label.title = state.remote || "";
+  // What there is to sync: "2 to push", "1 new from Lucas". The button with
+  // something to do is highlighted.
+  const sync = state.sync;
+  const notes = [];
+  if (sync && sync.ahead) notes.push(`${sync.ahead} to push`);
+  if (sync && sync.behind) notes.push(`${sync.behind} new from ${sync.from.join(" and ")}`);
+  if (notes.length) label.append(h("span", {class: "sync"}, ` · ${notes.join(" · ")}`));
+  $("#btn-pull").classList.toggle("primary", Boolean(sync && sync.behind));
+  $("#btn-push").classList.toggle("primary", Boolean(sync && sync.ahead && !sync.behind));
   if (!$("#remote-input").value) $("#remote-input").value = state.remote || "";
 }
 
