@@ -94,6 +94,57 @@ def normalize(spec: str) -> str:
     return spec if spec.startswith("s3://") else str(Path(spec).expanduser().resolve())
 
 
+def is_shared_kit(folder: Path) -> bool:
+    """A folder Kit has pushed to: it has a HEAD file and a commits folder."""
+    return (folder / "HEAD").is_file() and (folder / "commits").is_dir()
+
+
+def _empty(folder: Path) -> bool:
+    """Missing, or holding nothing but hidden files such as .DS_Store."""
+    return not folder.exists() or not any(not item.name.startswith(".") for item in folder.iterdir())
+
+
+def place_to_share(spec: str, repo: Repo) -> str:
+    """Where to share `repo` when the user picks the folder `spec`.
+
+    People pick the folder they share things in (their Google Drive, a "kits"
+    folder) rather than a new empty one. Kit's own files (objects, commits,
+    HEAD) would then land among their other files, so the kit gets a folder of
+    its own inside: picking "Google Drive" shares "Dark Trap Kit" as
+    "Google Drive/Dark Trap Kit". An empty folder, or one that is already a
+    shared kit, is used as it is.
+    """
+    if spec.startswith("s3://"):
+        return spec
+    chosen = Path(normalize(spec))
+    target = chosen if is_shared_kit(chosen) or _empty(chosen) else chosen / repo.folder.name
+    if target == repo.folder or repo.folder in target.parents:
+        raise KitError("the shared folder cannot be the kit itself or inside it; choose a folder outside the kit")
+    if not (is_shared_kit(target) or _empty(target)):
+        raise KitError(f"{target} already exists and is not a shared kit; choose another folder")
+    return str(target)
+
+
+def find_shared(spec: str) -> str:
+    """The shared kit at `spec`, or the only one directly inside it.
+
+    Someone getting a kit often picks the folder around it ("Google Drive")
+    rather than the kit's own folder, so one level down is searched too.
+    """
+    if spec.startswith("s3://"):
+        return spec
+    chosen = Path(normalize(spec))
+    if is_shared_kit(chosen) or not chosen.is_dir():
+        return str(chosen)
+    found = sorted(item for item in chosen.iterdir() if item.is_dir() and is_shared_kit(item))
+    if len(found) == 1:
+        return str(found[0])
+    if found:
+        names = ", ".join(item.name for item in found)
+        raise KitError(f"{chosen} holds several shared kits ({names}); choose one of them")
+    return str(chosen)  # nothing here; clone or pull will say so
+
+
 def open_remote(spec: str) -> Remote:
     """Turn what the user typed into a remote: `s3://bucket/prefix` or a folder path."""
     if spec.startswith("s3://"):
@@ -203,6 +254,7 @@ def pull(repo: Repo, remote: Remote) -> SyncResult:
 
 def clone(spec: str, folder, author: str | None = None) -> tuple[Repo, SyncResult]:
     """Make a new kit folder from a remote. This is also how a pack is forked."""
+    spec = find_shared(spec)
     remote = open_remote(spec)
     if remote.read_head() is None:
         raise KitError(f"there is nothing to clone at {spec}")

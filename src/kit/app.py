@@ -234,7 +234,7 @@ class App:
             raise KitError("choose the shared folder first")
         if not into:
             raise KitError("choose where to put the kit")
-        spec = remote.normalize(spec)
+        spec = remote.find_shared(remote.normalize(spec))
         name = spec.rstrip("/").rsplit("/", 1)[-1].rsplit("\\", 1)[-1] or "shared kit"
         repo, result = remote.clone(spec, Path(into).expanduser() / name)
         self.open(repo.folder)
@@ -280,8 +280,12 @@ class App:
             spec = (body.get("remote") or "").strip()
             if not spec:
                 raise KitError("type a folder path or s3://bucket/name first")
-            repo.set_remote(remote.normalize(spec))
-            return {"message": f"Remote set to {repo.remote()}"}
+            chosen = remote.normalize(spec)
+            repo.set_remote(remote.place_to_share(spec, repo))
+            if repo.remote() != chosen:
+                return {"message": f"Sharing in {repo.remote()}, a folder of its own inside the one you chose. "
+                                   "Push to send your versions there."}
+            return {"message": f"Sharing in {repo.remote()}. Push to send your versions there."}
         if action in ("push", "pull"):
             if not repo.remote():
                 raise KitError("set a remote first: a shared folder or s3://bucket/name")

@@ -174,6 +174,8 @@ MyKit/
 **Sync sends only what is missing.**
 `push` walks the history back from `HEAD` until it reaches a version the remote already has, then uploads those versions oldest first. For each one it uploads only the objects the remote lacks, then the commit, and moves the remote's `HEAD` last. An interrupted push can leave extra objects on the remote but never a version with pieces missing. `pull` does the same in the other direction and re-hashes every download, so a corrupted file is rejected.
 
+A shared folder that already holds other things (your whole Google Drive, say) gets a folder of its own for the kit, named after it, so Kit's files never mix with yours; an empty folder or an existing shared kit is used as it is. Getting or pulling from a folder that only *contains* a shared kit finds the kit inside it.
+
 `push` refuses when the remote holds versions the local repo has never seen, because moving `HEAD` would cut them out of the history. Pull first, then push.
 
 **Merging is three-way, per file.**

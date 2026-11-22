@@ -53,8 +53,15 @@ def _labels(repo: Repo) -> dict[str, str]:
     return {commit.id: f"v{len(history) - i}" for i, commit in enumerate(history)}
 
 
-def _remote_for(repo: Repo, spec: str | None):
-    """Open the remote named on the command line, or the saved default."""
+def _remote_for(repo: Repo, spec: str | None, sending: bool):
+    """Open the remote named on the command line, or the saved default.
+
+    A folder named on the command line is checked first: for sending, the kit
+    gets its own folder inside a folder that holds other things; for receiving,
+    the shared kit inside the named folder is found.
+    """
+    if spec:
+        spec = remote.place_to_share(spec, repo) if sending else remote.find_shared(spec)
     spec = spec or repo.remote()
     if not spec:
         raise KitError("no remote given; use `kit push <folder or s3://bucket>` "
@@ -168,7 +175,7 @@ def cmd_credits(args) -> None:
 def cmd_remote(args) -> None:
     repo = Repo.find()
     if args.remote:
-        repo.set_remote(remote.normalize(args.remote))
+        repo.set_remote(remote.place_to_share(args.remote, repo))
         print(f"Default remote set to {repo.remote()}")
     else:
         print(repo.remote() or "No default remote saved yet.")
@@ -176,7 +183,7 @@ def cmd_remote(args) -> None:
 
 def cmd_push(args) -> None:
     repo = Repo.find()
-    result = remote.push(repo, _remote_for(repo, args.remote))
+    result = remote.push(repo, _remote_for(repo, args.remote, sending=True))
     if result.commits == 0:
         print("The remote already has every version.")
     else:
@@ -207,12 +214,13 @@ def cmd_resolve(args) -> None:
 
 def cmd_pull(args) -> None:
     repo = Repo.find()
-    _print_pull(repo, remote.pull(repo, _remote_for(repo, args.remote)))
+    _print_pull(repo, remote.pull(repo, _remote_for(repo, args.remote, sending=False)))
 
 
 def cmd_clone(args) -> None:
-    folder = args.folder or Path(args.remote.rstrip("/")).name
-    repo, result = remote.clone(args.remote, folder, author=args.author)
+    spec = remote.find_shared(args.remote)
+    folder = args.folder or Path(spec.rstrip("/")).name
+    repo, result = remote.clone(spec, folder, author=args.author)
     print(f"Cloned into {repo.folder} (author: {repo.author})")
     _print_pull(repo, result)
 
