@@ -68,6 +68,8 @@ def _load_webview():
 def run(folder=None, window: bool = True, open_browser: bool = True, dev: bool = False) -> None:
     """Start the server and show the page, in a window if possible."""
     server, app = make_server(folder, dev=dev)
+    if not dev:  # while working on the app, there is no point asking
+        app.start_update_check()
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:

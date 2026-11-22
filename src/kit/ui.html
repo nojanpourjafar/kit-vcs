@@ -134,6 +134,10 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 #remote-label { color: var(--muted); font-size: 13px; max-width: 320px; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
+#update { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 9px 20px;
+  background: var(--card); border-bottom: 1px solid var(--line); font-size: 14px; }
+#update strong { color: var(--accent); }
+#update button { padding: 4px 12px; }
 #remote-form { display: flex; gap: 10px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
 [hidden] { display: none !important; }  /* `hidden` must win over display: flex and grid */
 .split { display: flex; height: 12px; border-radius: 999px; overflow: hidden; gap: 2px; margin-bottom: 10px; }
@@ -154,6 +158,7 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
     <button id="btn-push">Push</button>
   </div>
 </header>
+<div id="update" hidden></div>
 <form id="remote-form" hidden>
   <input type="text" id="remote-input" aria-label="Shared folder" placeholder="A shared folder, like ~/GoogleDrive/my-kit, or s3://bucket/my-kit">
   <button type="button" class="pick" id="remote-pick">Choose…</button>
@@ -588,6 +593,7 @@ function renderHome() {
 }
 
 function render() {
+  showUpdate(state.update);
   const home = Boolean(state.home);
   document.title = home ? "Kit" : `${state.name} · Kit`;
   $("#kit-name").textContent = home ? "" : state.name;
@@ -947,6 +953,33 @@ function splitSection(sounds) {
 }
 
 $("#btn-home").addEventListener("click", (event) => act("close", {}, event.currentTarget));
+
+// ---- a newer version ------------------------------------------------------------
+
+// The server asks GitHub once at start-up whether a newer Kit is out. "Later"
+// hides the note until Kit is opened again. The download page opens in the
+// user's own browser, where downloads work as usual.
+let laterFor = null;  // the version "Later" was clicked for
+
+function showUpdate(version) {
+  const bar = $("#update");
+  bar.hidden = !version || version === laterFor;
+  if (bar.hidden || bar.dataset.version === version) return;
+  bar.dataset.version = version;
+  bar.replaceChildren(
+    h("span", {}, h("strong", {}, `Kit ${version} is out.`), " Your kits and history carry over: download it and replace this app."),
+    h("button", {class: "primary", onclick: (event) => act("download", {}, event.currentTarget)}, "Download"),
+    h("button", {onclick: () => { laterFor = version; bar.hidden = true; }}, "Later"));
+}
+
+// The check takes a moment, so ask for its answer a few times after starting.
+(async function waitForUpdateCheck(tries = 10) {
+  try {
+    const {checked, version} = await api("/api/update");
+    if (checked) return showUpdate(version);
+  } catch (error) { /* the server is busy; ask again */ }
+  if (tries > 1) setTimeout(() => waitForUpdateCheck(tries - 1), 1500);
+})();
 
 // The desktop app announces when its Python bridge is ready; redraw so the
 // home screen can swap the path box for the "Open a folder…" button.

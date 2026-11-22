@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import names, remote, tags
+from . import names, remote, tags, updates
 from .audio import describe
 from .audio import note, peaks, tempo
 from .manifest import diff
@@ -82,6 +82,8 @@ class App:
         self._tempo: dict[str, float | None] = {}
         self._note: dict[str, str | None] = {}
         self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
+        self.update: str | None = None  # a newer version on GitHub, once the check has found one
+        self.update_checked = False
         if folder is not None:
             if not Path(folder).is_dir():
                 raise KitError(f"there is no folder at {folder}")
@@ -156,8 +158,19 @@ class App:
 
     # ---- reading ---------------------------------------------------------
 
+    def check_for_update(self) -> None:
+        """Ask GitHub whether a newer Kit is out. Runs on its own thread at start-up."""
+        self.update = updates.newer_version(config_dir() / "update.json")
+        self.update_checked = True
+
+    def start_update_check(self) -> None:
+        threading.Thread(target=self.check_for_update, daemon=True).start()
+
     def state(self) -> dict:
-        """Everything the "Now" screen shows, or the home screen when no kit is open."""
+        """Everything the screen shows, plus a newer version of Kit if there is one."""
+        return {**self._state(), "update": self.update}
+
+    def _state(self) -> dict:
         if self.folder is None:
             return {"home": True, "recent": self.recent(), "name": self.name()}
         if not (self.folder / DIR).is_dir():
@@ -351,6 +364,9 @@ class App:
         if action == "star":
             self.repo().star(body.get("path") or "", bool(body.get("on", True)))
             return {"message": ""}
+        if action == "download":
+            webbrowser.open(updates.DOWNLOAD_PAGE)  # the user's own browser, even from the app window
+            return {"message": ""}
         if action == "forget":
             name = self.forget(body.get("folder") or "")
             return {"message": f"Removed {name} from the list. The folder and its sounds are untouched."}
@@ -505,6 +521,9 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/progress":
             # No lock: this answers while a long scan holds it.
             return self._json(200, self.app.progress)
+        if url.path == "/api/update":
+            # No lock: it only reads two values set by the start-up check.
+            return self._json(200, {"checked": self.app.update_checked, "version": self.app.update})
         if url.path == "/api/tempo":
             return self._run(lambda: self.app.listen(query), lock=False)
         if url.path == "/api/peaks":
@@ -574,6 +593,8 @@ def make_server(folder=None, port: int = 0, dev: bool = False) -> tuple[Threadin
 
 def serve(folder=".", port: int = 0, open_browser: bool = True, dev: bool = False) -> None:
     server, app = make_server(folder, port, dev=dev)
+    if not dev:
+        app.start_update_check()
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Kit is running for {app.folder or 'your kits'}")
     print(f"Open {url}  (press Ctrl+C here to stop)")

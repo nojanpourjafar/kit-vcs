@@ -3,8 +3,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def private_settings(tmp_path, monkeypatch):
-    """Point the app's own settings (recent kits) at a throwaway folder for every test."""
+    """Point the app's own settings (recent kits) at a throwaway folder for every test,
+    and never ask GitHub for a newer version: tests must not need the internet."""
     monkeypatch.setenv("KIT_CONFIG_DIR", str(tmp_path / "settings"))
+    monkeypatch.setenv("KIT_NO_UPDATE_CHECK", "1")
 
 
 @pytest.fixture

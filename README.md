@@ -21,6 +21,8 @@ The app is not signed yet, so the system warns the first time:
 - **macOS:** if it says Kit cannot be opened, go to System Settings > Privacy & Security and click Open Anyway.
 - **Windows:** if SmartScreen appears, click More info, then Run anyway.
 
+When a newer version is out, Kit says so at the top of the window, with a button that opens this page. To update, download it and replace the old app; kits, history and settings are kept outside the app and carry over. To find out, Kit asks GitHub for the number of the latest release, at most once a day; nothing else is sent. Set `KIT_NO_UPDATE_CHECK=1` to turn this off.
+
 ## Install
 
 Needs Python 3.10 or newer. No other dependencies.
@@ -225,6 +227,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
+| `src/kit/updates.py` | Asks GitHub whether a newer release is out |
 | `src/kit/report.py` | The `kit show` web page |
 | `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
 | `src/kit/ui.html` | The page: layout, styles and script in one file |
