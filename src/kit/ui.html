@@ -29,6 +29,9 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.conflicts { border-color: var(--modified); }
+.conflict { display: grid; gap: 8px; margin-top: 14px; }
+.conflict .sounds .sound { background: var(--bg); }
 .sound.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 ul, ol { list-style: none; margin: 0; padding: 0; }
@@ -187,7 +190,7 @@ function summary(changes) {
 // `live` is true for sounds that are in the folder right now (the "Now" screen),
 // as opposed to a sound inside an old version, which only exists in .kit.
 function soundRow(sound, live) {
-  const info = [sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet"];
+  const info = [sound.label || (sound.by ? `added by ${sound.by} in ${sound.since}` : "not saved yet")];
   if (sound.was) info.push(`was ${sound.was}`);
   if (sound.bpm) info.push(`${sound.bpm} BPM`);
   if (sound.key) info.push(sound.key);
@@ -376,10 +379,36 @@ function renderNow() {
       h("strong", {}, "These names will not work for someone on Windows. Rename them before sharing:"),
       h("ul", {}, state.warnings.map((line) => h("li", {}, line)))));
   }
-  const parts = [box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds, true),
+  const parts = [conflictSection(), box, soundSection(`${plural(state.sounds.length, "sound")} in the folder`, state.sounds, true),
     removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];
   parts.push(splitSection(state.sounds));
   $("#main").replaceChildren(...parts.filter(Boolean));
+}
+
+// ---- sounds both sides changed ---------------------------------------------
+
+// After a pull, a sound that you and someone else both changed is there twice:
+// yours under its own name, theirs beside it as "name (from Lucas).wav". Each
+// pair is shown here with both versions playable, and a choice.
+function conflictSection() {
+  if (!state.conflicts.length) return null;
+  const byPath = Object.fromEntries(state.sounds.map((sound) => [sound.path, sound]));
+  return h("section", {class: "card conflicts"},
+    h("h1", {}, state.conflicts.length === 1 ? "A sound was changed on both sides"
+      : `${state.conflicts.length} sounds were changed on both sides`),
+    h("p", {class: "muted"}, "Listen to both versions, then choose which to keep."),
+    state.conflicts.map((conflict) => {
+      const mine = byPath[conflict.path], theirs = byPath[conflict.theirs];
+      const choose = (keep) => (event) => act("resolve", {path: conflict.path, keep}, event.currentTarget);
+      return h("div", {class: "conflict"},
+        h("ul", {class: "sounds"},
+          mine && soundRow({...mine, label: "your version"}, false),
+          theirs && soundRow({...theirs, label: `${conflict.author}'s version`}, false)),
+        h("div", {class: "row"},
+          h("button", {onclick: choose("mine")}, "Keep mine"),
+          h("button", {onclick: choose("theirs")}, `Keep ${conflict.author}'s`),
+          h("button", {onclick: choose("both")}, "Keep both")));
+    }));
 }
 
 function renderStart() {

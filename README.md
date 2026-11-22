@@ -110,7 +110,7 @@ And you bring their work into yours:
 kit pull
 ```
 
-If both of you saved new versions since you last synced, `kit pull` merges the two histories. Sounds changed on only one side are taken as they are. If you both changed the same sound, nothing is thrown away: your file stays, and theirs is saved beside it as `name (from Lucas).wav` so you can listen and keep the one you want. `kit credits` then shows who added what, with a split by number of sounds.
+If both of you saved new versions since you last synced, `kit pull` merges the two histories. Sounds changed on only one side are taken as they are. If you both changed the same sound, nothing is thrown away: your file stays, and theirs is saved beside it as `name (from Lucas).wav`. The app shows the two side by side to listen to, with Keep mine, Keep theirs and Keep both; on the command line, `kit status` lists them and `kit resolve <path> --keep mine|theirs|both` settles one. Then save a version to share the choice. `kit credits` then shows who added what, with a split by number of sounds.
 
 ### Cloud storage
 
@@ -140,6 +140,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit remote [where]` | Show or set the default remote |
 | `kit push [where]` | Send new versions to a remote |
 | `kit pull [where]` | Get new versions from a remote, merging if needed |
+| `kit resolve <path> --keep mine\|theirs\|both` | Settle a sound both sides changed |
 | `kit clone <where> [folder]` | Make a new kit folder from a remote |
 | `kit verify` | Check that nothing stored is damaged or missing |
 

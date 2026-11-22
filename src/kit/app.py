@@ -144,6 +144,7 @@ class App:
             "removed": [c.path for c in changes if c.kind == "removed"],
             "reveal": REVEAL_LABEL,
             "warnings": names.warnings(working),
+            "conflicts": repo.conflicts(),
         }
 
     def version(self, ref: str) -> dict:
@@ -274,8 +275,11 @@ class App:
             if result.outcome == "merge":
                 message += " Both sides had new versions, so they were merged."
             if result.conflicts:
-                message += (" Changed on both sides, both kept: " + ", ".join(result.conflicts))
+                message += " Some sounds were changed on both sides: listen to both and choose, at the top."
             return {"message": message}
+        if action == "resolve":
+            done = repo.settle(body.get("path", ""), body.get("keep", ""))
+            return {"message": done + " Save a version to share the choice."}
         raise KitError(f"unknown action: {action}")
 
 

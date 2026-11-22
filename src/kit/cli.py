@@ -79,8 +79,18 @@ def _print_name_warnings(paths) -> None:
             print(f"  ! {line}")
 
 
+def _print_conflicts(repo) -> None:
+    conflicts = repo.conflicts()
+    if conflicts:
+        print("Changed on both sides; listen to both, then choose:")
+        for c in conflicts:
+            print(f"  ! {c['path']}  (theirs: {c['theirs']}, from {c['author']})")
+        print("Choose with: kit resolve <path> --keep mine|theirs|both")
+
+
 def cmd_status(args) -> None:
     repo = Repo.find()
+    _print_conflicts(repo)
     changes = repo.status()
     history = repo.log()
     if not changes:
@@ -182,9 +192,17 @@ def _print_pull(repo: Repo, result) -> None:
     if result.outcome == "merge":
         print(f"Both sides had new versions, so they were merged as v{len(repo.log())}.")
     if result.conflicts:
-        print("Changed on both sides (both versions were kept, listen and delete one):")
+        _print_conflicts(repo)
+        waiting = {c["path"] for c in repo.conflicts()}
         for path in result.conflicts:
-            print(f"  ! {path}")
+            if path not in waiting:  # one side deleted it, the other changed it
+                print(f"  ~ {path}: deleted on one side and changed on the other; the changed one was kept")
+
+
+def cmd_resolve(args) -> None:
+    repo = Repo.find()
+    print(repo.settle(args.path, args.keep))
+    print('Save the choice with: kit commit -m "chose the kick"')
 
 
 def cmd_pull(args) -> None:
@@ -278,6 +296,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("pull", help="get new versions from a remote, merging if needed")
     p.add_argument("remote", nargs="?", help="a folder path or s3://bucket/prefix")
     p.set_defaults(run=cmd_pull)
+
+    p = sub.add_parser("resolve", help="settle a sound both sides changed: keep mine, theirs or both")
+    p.add_argument("path", help="the sound, as kit status lists it")
+    p.add_argument("--keep", required=True, choices=["mine", "theirs", "both"])
+    p.set_defaults(run=cmd_resolve)
 
     p = sub.add_parser("clone", help="make a new kit folder from a remote (fork a pack)")
     p.add_argument("remote", help="a folder path or s3://bucket/prefix")

@@ -261,7 +261,8 @@ class Repo:
             (c.id for c in reversed(lineage(their_id, self.load_commit)) if c.id in mine), None
         )
         their_author = self.load_commit(their_id).author
-        merged, conflicts = merge_manifests(self.manifest_of(base_id), ours, theirs, their_author)
+        kept: dict[str, str] = {}
+        merged, conflicts = merge_manifests(self.manifest_of(base_id), ours, theirs, their_author, kept)
         self._write_files(merged, working, ours)
         commit = new_commit(
             our_id, self.store.put_bytes(dumps(merged)), self.author,
@@ -269,7 +270,59 @@ class Repo:
         )
         self.store_commit_bytes(commit.to_bytes())
         self.set_head(commit.id)
+        if kept:  # remember them, so they can be listened to and settled later
+            self._save_conflicts(self._load_conflicts() + [
+                {"path": path, "theirs": beside, "author": their_author} for path, beside in sorted(kept.items())
+            ])
         return Merged("merge", commit, diff(ours, merged), conflicts)
+
+    # ---- conflicts ----------------------------------------------------------
+
+    def conflicts(self) -> list[dict]:
+        """Sounds both sides changed, still waiting for a choice.
+
+        Each is {"path": yours, "theirs": their copy beside it, "author": who}.
+        One that was settled by hand (a file deleted or renamed in Finder) drops
+        off the list by itself.
+        """
+        open_ = [c for c in self._load_conflicts()
+                 if (self.folder / c["path"]).is_file() and (self.folder / c["theirs"]).is_file()]
+        if open_ != self._load_conflicts():
+            self._save_conflicts(open_)
+        return open_
+
+    def settle(self, path: str, keep: str) -> str:
+        """Settle a conflict: keep "mine", "theirs", or "both". Returns what was done.
+
+        Like `restore`, this only changes files. The choice becomes an ordinary
+        change that is shared by saving a version.
+        """
+        conflict = next((c for c in self.conflicts() if c["path"] == path), None)
+        if conflict is None:
+            raise KitError(f"{path} has no open conflict")
+        mine, theirs = self._safe_path(conflict["path"]), self._safe_path(conflict["theirs"])
+        if keep == "mine":
+            theirs.unlink()
+            done = f"Kept your {path}; {conflict['author']}'s copy was removed."
+        elif keep == "theirs":
+            os.replace(theirs, mine)  # their audio takes the original name
+            done = f"Kept {conflict['author']}'s {path}; yours was replaced."
+        elif keep == "both":
+            done = f"Kept both {path} and {conflict['theirs']}."
+        else:
+            raise KitError('keep must be "mine", "theirs" or "both"')
+        self._save_conflicts([c for c in self._load_conflicts() if c["path"] != path])
+        return done
+
+    def _load_conflicts(self) -> list[dict]:
+        try:
+            data = json.loads((self.dir / "conflicts.json").read_text())
+        except (OSError, ValueError):
+            return []
+        return [c for c in data if isinstance(c, dict) and {"path", "theirs", "author"} <= c.keys()]
+
+    def _save_conflicts(self, conflicts: list[dict]) -> None:
+        _atomic_write(self.dir / "conflicts.json", json.dumps(conflicts, indent=2).encode())
 
     def credits(self, ref: str | None = None) -> dict[str, Commit]:
         """For each file in a version, the commit that first brought in that audio.

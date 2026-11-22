@@ -136,7 +136,7 @@ def diff(old: Manifest, new: Manifest) -> list[Change]:
 
 
 def merge_manifests(base: Manifest, ours: Manifest, theirs: Manifest,
-                    their_name: str) -> tuple[Manifest, list[str]]:
+                    their_name: str, kept: dict | None = None) -> tuple[Manifest, list[str]]:
     """Three-way merge. Returns the merged manifest and the paths in conflict.
 
     `base` is the last version both sides share. For each path:
@@ -145,7 +145,8 @@ def merge_manifests(base: Manifest, ours: Manifest, theirs: Manifest,
       * changed differently       -> a conflict.
     Audio cannot be merged line by line the way code can, so a conflict never
     throws work away: both files are kept, with theirs saved beside ours as
-    "name (from Author).wav".
+    "name (from Author).wav". If `kept` is given, it is filled with
+    {path: the name their copy was saved under}.
     """
     merged = dict(ours)
     conflicts: list[str] = []
@@ -165,7 +166,10 @@ def merge_manifests(base: Manifest, ours: Manifest, theirs: Manifest,
         if our_hash is None:
             merged[path] = their_entry  # we deleted it, they edited it: keep the edit
         elif their_hash is not None:
-            merged[_beside(path, their_name, merged, theirs)] = their_entry
+            beside = _beside(path, their_name, merged, theirs)
+            merged[beside] = their_entry
+            if kept is not None:
+                kept[path] = beside
         # else: they deleted it and we edited it, so our edit stays
     return merged, conflicts
 
