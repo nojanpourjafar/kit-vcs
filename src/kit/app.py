@@ -171,7 +171,7 @@ class App:
             ],
             "changes": [vars(change) for change in changes],
             "sounds": self._sounds(working, changes, by_hash, labels,
-                                   locate=lambda path, entry: repo.folder / path, key="path"),
+                                   locate=lambda path, entry: repo.folder / path, key="path", before=saved),
             "removed": [c.path for c in changes if c.kind == "removed"],
             "reveal": REVEAL_LABEL,
             "warnings": names.warnings(working),
@@ -194,11 +194,18 @@ class App:
             "time": commit.time, "latest": commit.id == repo.head(),
             "sounds": self._sounds(manifest, changes, by_hash, labels,
                                    locate=lambda path, entry: repo.store.path_for(entry["hash"]),
-                                   key="hash"),
+                                   key="hash", before=repo.manifest_of(commit.parent)),
             "removed": [c.path for c in changes if c.kind == "removed"],
         }
 
-    def _sounds(self, manifest, changes, by_hash, labels, locate, key) -> list[dict]:
+    def _sounds(self, manifest, changes, by_hash, labels, locate, key, before=None) -> list[dict]:
+        """The sounds of `manifest`, with what the page needs to show and play each one.
+
+        `before` is the version the changes are measured against. A modified
+        sound gets a "before" source too, pointing at its previous audio in the
+        store, so the page can play the two one after the other.
+        """
+        before = before or {}
         changed = {c.path: c for c in changes if c.kind != "removed"}
         sounds = []
         for path, entry in sorted(manifest.items()):
@@ -214,6 +221,8 @@ class App:
                           else f"hash={entry['hash']}&name={_quote(path)}",
                 "info": describe(locate(path, entry), path),
                 "change": change.kind if change else None,
+                "before": f"hash={before[path]['hash']}&name={_quote(path)}"
+                          if change and change.kind == "modified" and path in before else None,
                 "was": change.old_path if change else None,
                 "by": credit.author if credit else None,
                 "since": labels.get(credit.id, credit.id[:8]) if credit else None,

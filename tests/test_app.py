@@ -326,3 +326,25 @@ def test_getting_a_shared_kit_explains_what_is_missing(tmp_path):
         with pytest.raises(KitError, match=error):
             friend.act("clone", body)
     assert friend.folder is None                              # still on the home screen
+
+
+def test_a_modified_sound_can_be_heard_as_it_was(app, kit):
+    repo = Repo.init(kit, author="Nojan")
+    repo.commit("first")
+    (kit / "Kicks" / "kick_01.wav").write_bytes(b"LOUDER" * 100)     # re-bounced, not saved yet
+    (kit / "Hats" / "hat_01.wav").rename(kit / "Hats" / "hat_closed.wav")
+    (kit / "Kicks" / "kick_03.wav").write_bytes(b"NEW" * 10)
+
+    sounds = {s["path"]: s for s in app.json("/api/state")["sounds"]}
+    assert sounds["Kicks/kick_01.wav"]["before"]                      # modified: the old audio can be played
+    assert sounds["Hats/hat_closed.wav"]["before"] is None            # renamed: same audio
+    assert sounds["Kicks/kick_03.wav"]["before"] is None               # added: there was nothing before
+    status, body, _ = app(f"/api/audio?{sounds['Kicks/kick_01.wav']['before']}&t={app.token}", token="")
+    assert status == 200 and body == b"KICK" * 100                     # the saved version's audio
+
+    repo.commit("louder kick")
+    saved = {s["path"]: s for s in app.json("/api/version?ref=v2")["sounds"]}
+    status, body, _ = app(f"/api/audio?{saved['Kicks/kick_01.wav']['before']}&t={app.token}", token="")
+    assert body == b"KICK" * 100                                        # in a version, before = its parent
+    first = {s["path"]: s for s in app.json("/api/version?ref=v1")["sounds"]}
+    assert all(s["before"] is None for s in first.values())            # the first version has no before

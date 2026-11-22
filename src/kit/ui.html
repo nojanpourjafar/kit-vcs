@@ -29,6 +29,8 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+button.before { padding: 3px 9px; font-size: 12px; color: var(--modified); border-color: var(--modified); }
+.sound.hearing-before button.before { background: var(--modified); color: var(--card); }
 .name-line { margin: 10px 0 0; font-size: 13px; }
 button.link { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; }
 .meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 4px; }
@@ -208,6 +210,11 @@ function soundRow(sound, live) {
     "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(),
     onclick: () => select(row)});
   row.append(playButton(row, sound));
+  if (sound.before) {
+    // A modified sound: play its previous audio, at the same point, to hear what changed.
+    row.append(h("button", {class: "before", title: "Play the previous version of this sound, from the same point",
+      "aria-label": `Play ${sound.path} as it was before`, onclick: () => toggle(row, sound, "before")}, "Before"));
+  }
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
@@ -673,17 +680,27 @@ function playButton(row, sound) {
   return h("button", {class: "play", "aria-label": `Play ${sound.path}`, onclick: () => toggle(row, sound)});
 }
 
-function toggle(row, sound) {
-  if (current === row) {
+// `which` is "after" (the sound as it is) or "before" (a modified sound's
+// previous audio). Switching between the two on the same row keeps the
+// playback position, so the change can be heard back and forth.
+function toggle(row, sound, which = "after") {
+  if (current === row && row.dataset.which === which) {
     if (player.paused) player.play(); else player.pause();
     return;
   }
-  if (current) current.classList.remove("playing", "started");
+  const at = current === row ? player.currentTime : 0;
+  if (current && current !== row) current.classList.remove("playing", "started", "hearing-before");
   current = row;
-  row.style.setProperty("--progress", 0);
+  row.dataset.which = which;
+  row.classList.toggle("hearing-before", which === "before");
+  if (!at) row.style.setProperty("--progress", 0);
   row.classList.add("started");
   // An <audio> request cannot carry our header, so the token rides in the address.
-  player.src = `/api/audio?${sound.source}&t=${TOKEN}`;
+  player.src = `/api/audio?${which === "before" ? sound.before : sound.source}&t=${TOKEN}`;
+  if (at) {
+    player.addEventListener("loadedmetadata", () => { player.currentTime = Math.min(at, player.duration || at); },
+      {once: true});
+  }
   player.play().catch(() => toast("The browser cannot play this kind of file.", true));
 }
 
