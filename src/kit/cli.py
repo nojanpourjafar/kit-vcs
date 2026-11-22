@@ -240,13 +240,18 @@ def cmd_push(args) -> None:
         print("The remote already has every version.")
     else:
         print(f"Pushed {result.commits} version(s), {result.objects} object(s).")
+    if note := remote.names_note(result, sent=True):
+        print(note)
 
 
 def _print_pull(repo: Repo, result) -> None:
+    note = remote.names_note(result, sent=False)
     if result.outcome == "up-to-date":
-        print("Already up to date.")
+        print("Already up to date." + (f" {note}" if note else ""))
         return
     print(f"Pulled {result.commits} version(s), {result.objects} object(s).")
+    if note:
+        print(note)
     _print_changes(result.changes, locate=lambda path: repo.folder / path)
     if result.outcome == "merge":
         print(f"Both sides had new versions, so they were merged as v{len(repo.log())}.")

@@ -292,14 +292,27 @@ class Repo:
 
     def names(self) -> dict[str, str]:
         """Names given to versions, like {"1.0": commit ID}. Kept in .kit/names.json."""
+        return {name: commit_id for name, commit_id in self._load_names()[0].items() if self.has_commit(commit_id)}
+
+    def removed_names(self) -> dict[str, str]:
+        """Names removed here but perhaps still in the shared folder: {name: the version it named}.
+
+        Remembered so that a pull does not bring a removed name back, and so the
+        next push can remove it from the shared folder too.
+        """
+        return self._load_names()[1]
+
+    def _load_names(self) -> tuple[dict[str, str], dict[str, str]]:
         try:
             data = json.loads((self.dir / "names.json").read_text())
         except (OSError, ValueError):
-            return {}
+            return {}, {}
         if not isinstance(data, dict):
-            return {}
-        return {name: commit_id for name, commit_id in data.items()
-                if isinstance(name, str) and isinstance(commit_id, str) and self.has_commit(commit_id)}
+            return {}, {}
+        if not isinstance(data.get("names"), dict):  # the first layout: just {name: commit ID}
+            data = {"names": data, "removed": {}}
+        clean = lambda pairs: {k: v for k, v in pairs.items() if isinstance(k, str) and isinstance(v, str)}
+        return clean(data["names"]), clean(data.get("removed") or {})
 
     def names_of(self, commit_id: str) -> list[str]:
         return sorted(name for name, named in self.names().items() if named == commit_id)
@@ -320,7 +333,8 @@ class Repo:
             raise KitError(f"{same} already names another version; remove that name first")
         names.pop(same, None)
         names[name] = commit_id
-        self._save_names(names)
+        removed = {k: v for k, v in self.removed_names().items() if k.lower() != name.lower()}
+        self._save_names(names, removed)
         return commit_id
 
     def remove_name(self, name: str) -> None:
@@ -328,11 +342,14 @@ class Repo:
         same = next((existing for existing in names if existing.lower() == name.strip().lower()), None)
         if same is None:
             raise KitError(f"no version is named {name.strip()}")
-        del names[same]
-        self._save_names(names)
+        removed = self.removed_names()
+        removed[same] = names.pop(same)
+        self._save_names(names, removed)
 
-    def _save_names(self, names: dict[str, str]) -> None:
-        _atomic_write(self.dir / "names.json", json.dumps(dict(sorted(names.items())), indent=2).encode())
+    def _save_names(self, names: dict[str, str], removed: dict[str, str] | None = None) -> None:
+        removed = self.removed_names() if removed is None else removed
+        data = {"names": dict(sorted(names.items())), "removed": dict(sorted(removed.items()))}
+        _atomic_write(self.dir / "names.json", json.dumps(data, indent=2).encode())
 
     # ---- conflicts ----------------------------------------------------------
 

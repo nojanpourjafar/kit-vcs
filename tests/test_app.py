@@ -151,7 +151,7 @@ def test_set_a_remote_then_push_and_pull(app, kit, tmp_path):
     shared = tmp_path / "shared"
     assert str(shared.resolve()) in app.json("/api/remote", {"remote": str(shared)})["message"]
     assert app.json("/api/push", {})["message"] == "Pushed 1 version(s)."
-    assert app.json("/api/push", {})["message"] == "The remote already has every version."
+    assert app.json("/api/push", {})["message"] == "The shared folder already has every version."
 
     fork, _ = remote.clone(str(shared), tmp_path / "fork", author="Lucas")
     (fork.folder / "Hats" / "hat_lucas.wav").write_bytes(b"lucas hat")

@@ -14,6 +14,7 @@ written once and work with either.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from dataclasses import dataclass, field
@@ -28,7 +29,7 @@ from .repo import KitError, Repo
 
 
 class Remote(Protocol):
-    """The eight things any remote must be able to do."""
+    """The ten things any remote must be able to do."""
 
     def has_object(self, digest: str) -> bool: ...
     def upload_object(self, digest: str, src: Path) -> None: ...
@@ -38,6 +39,8 @@ class Remote(Protocol):
     def write_commit(self, commit_id: str, data: bytes) -> None: ...
     def read_head(self) -> str | None: ...
     def write_head(self, commit_id: str) -> None: ...
+    def read_names(self) -> dict[str, str]: ...
+    def write_names(self, names: dict[str, str]) -> None: ...
 
 
 class FolderRemote:
@@ -82,11 +85,90 @@ class FolderRemote:
         self.path.mkdir(parents=True, exist_ok=True)
         self._write(self.path / "HEAD", commit_id.encode())
 
+    def read_names(self) -> dict[str, str]:
+        return _parse_names((self.path / "names.json").read_bytes() if (self.path / "names.json").exists() else None)
+
+    def write_names(self, names: dict[str, str]) -> None:
+        self.path.mkdir(parents=True, exist_ok=True)
+        self._write(self.path / "names.json", json.dumps(dict(sorted(names.items())), indent=2).encode())
+
     @staticmethod
     def _write(path: Path, data: bytes) -> None:
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_bytes(data)
         os.replace(tmp, path)
+
+
+def _parse_names(data: bytes | None) -> dict[str, str]:
+    """A remote's names file, read defensively: it comes from other people."""
+    try:
+        names = json.loads(data) if data else {}
+    except ValueError:
+        return {}
+    if not isinstance(names, dict):
+        return {}
+    return {k: v for k, v in names.items() if isinstance(k, str) and isinstance(v, str) and is_digest(v)}
+
+
+def _same_name(name: str, names: dict[str, str]) -> str | None:
+    """The spelling of `name` in `names`, ignoring capital letters, or None."""
+    return next((existing for existing in names if existing.lower() == name.lower()), None)
+
+
+def names_note(result: SyncResult, sent: bool) -> str:
+    """One sentence about version names after a push or pull, or "" when there is nothing to say."""
+    parts = []
+    if result.names:
+        parts.append(f"{'Shared' if sent else 'Got'} {result.names} version name(s).")
+    for name in result.name_clashes:
+        parts.append(f'"{name}" names a different version {"in the shared folder" if sent else "here"}; '
+                     f"each side keeps its own.")
+    return " ".join(parts)
+
+
+def share_names(repo: Repo, remote: Remote) -> tuple[int, list[str]]:
+    """After a push: send new names, and removals. Returns (changes made, clashing names)."""
+    theirs = remote.read_names()
+    before = dict(theirs)
+    clashes = []
+    removed = repo.removed_names()
+    for name, commit_id in removed.items():
+        same = _same_name(name, theirs)
+        if same is not None and theirs[same] == commit_id:
+            del theirs[same]  # still meaning what we removed: remove it there too
+    for name, commit_id in repo.names().items():
+        same = _same_name(name, theirs)
+        if same is None:
+            if remote.has_commit(commit_id):
+                theirs[name] = commit_id
+        elif theirs[same] != commit_id:
+            clashes.append(name)  # someone used the name for another version first
+    if theirs != before:
+        remote.write_names(theirs)
+    repo._save_names(repo.names(), {})  # every removal is now shared (or meant something else there)
+    changes = len(theirs.keys() ^ before.keys()) + sum(theirs[k] != before[k] for k in theirs.keys() & before.keys())
+    return changes, clashes
+
+
+def take_names(repo: Repo, remote: Remote) -> tuple[int, list[str]]:
+    """After a pull: take the shared folder's names. Returns (names added, clashing names)."""
+    mine, removed = repo.names(), repo.removed_names()
+    added, clashes = 0, []
+    for name, commit_id in remote.read_names().items():
+        same = _same_name(name, mine)
+        if same is not None:
+            if mine[same] != commit_id:
+                clashes.append(name)  # we use the name for another version; ours stays
+            continue
+        gone = _same_name(name, removed)
+        if gone is not None and removed[gone] == commit_id:
+            continue  # removed here; the next push removes it there
+        if repo.has_commit(commit_id):
+            mine[name] = commit_id
+            added += 1
+    if added:
+        repo._save_names(mine, removed)
+    return added, clashes
 
 
 def normalize(spec: str) -> str:
@@ -164,6 +246,8 @@ class SyncResult:
     outcome: str = ""  # pull only: "up-to-date", "fast-forward" or "merge"
     changes: list[Change] = field(default_factory=list)  # pull only: what changed in the folder
     conflicts: list[str] = field(default_factory=list)  # pull only: paths where both versions were kept
+    names: int = 0  # version names sent (push) or received (pull)
+    name_clashes: list[str] = field(default_factory=list)  # names that mean another version on the other side
 
 
 def compare(repo: Repo, remote: Remote) -> dict:
@@ -216,7 +300,8 @@ def push(repo: Repo, remote: Remote) -> SyncResult:
     # hosted service would make this step a compare-and-swap.
     if remote_head != head:
         remote.write_head(head)
-    return SyncResult(len(missing), objects)
+    names, clashes = share_names(repo, remote)  # after HEAD: every version they name is there by now
+    return SyncResult(len(missing), objects, names=names, name_clashes=clashes)
 
 
 def pull(repo: Repo, remote: Remote) -> SyncResult:
@@ -228,7 +313,7 @@ def pull(repo: Repo, remote: Remote) -> SyncResult:
     remote_head = remote.read_head()
     if remote_head is None:
         return SyncResult(0, 0, "up-to-date")
-    if repo.status():
+    if repo.status() and remote_head not in repo.ancestors(repo.head()):
         raise KitError("you have unsaved changes; run `kit commit` first, then pull again")
 
     raw: dict[str, bytes] = {}
@@ -263,7 +348,8 @@ def pull(repo: Repo, remote: Remote) -> SyncResult:
             repo.store_commit_bytes(raw[commit.id])
 
     result = repo.merge(remote_head)
-    return SyncResult(len(incoming), objects, result.kind, result.changes, result.conflicts)
+    names, clashes = take_names(repo, remote)
+    return SyncResult(len(incoming), objects, result.kind, result.changes, result.conflicts, names, clashes)
 
 
 def clone(spec: str, folder, author: str | None = None) -> tuple[Repo, SyncResult]:

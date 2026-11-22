@@ -181,6 +181,8 @@ A shared folder that already holds other things (your whole Google Drive, say) g
 
 The app's header shows what there is to sync with a shared folder ("2 to push", "1 new from Lucas") and highlights Pull or Push; `kit status` says the same. Only the small version files are read for this, never audio, and S3 buckets are not checked, since that would mean network requests on every redraw.
 
+Version names travel with push and pull, through a small `names.json` beside `HEAD`. A name removed here stays removed after a pull, and the next push removes it from the shared folder too. If two people used the same name for different versions, each keeps their own and the push or pull says so.
+
 `push` refuses when the remote holds versions the local repo has never seen, because moving `HEAD` would cut them out of the history. Pull first, then push.
 
 **Merging is three-way, per file.**

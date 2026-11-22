@@ -348,12 +348,13 @@ class App:
             target = remote.open_remote(repo.remote())
             if action == "push":
                 result = remote.push(repo, target)
-                return {"message": f"Pushed {result.commits} version(s)." if result.commits
-                        else "The remote already has every version."}
+                message = (f"Pushed {result.commits} version(s)." if result.commits
+                           else "The shared folder already has every version.")
+                return {"message": f"{message} {remote.names_note(result, sent=True)}".strip()}
             result = remote.pull(repo, target)
             if result.outcome == "up-to-date":
-                return {"message": "Already up to date."}
-            message = f"Pulled {result.commits} version(s)."
+                return {"message": f"Already up to date. {remote.names_note(result, sent=False)}".strip()}
+            message = f"Pulled {result.commits} version(s). {remote.names_note(result, sent=False)}".strip()
             if result.outcome == "merge":
                 message += " Both sides had new versions, so they were merged."
             if result.conflicts:

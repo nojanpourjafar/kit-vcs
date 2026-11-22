@@ -11,6 +11,8 @@ Needs boto3:  pip install boto3
 
 from __future__ import annotations
 
+import json
+
 import os
 from pathlib import Path
 
@@ -61,7 +63,7 @@ class S3Remote:
                 return None
             raise
 
-    # ---- the eight remote methods ----------------------------------------
+    # ---- the ten remote methods ----------------------------------------
 
     def has_object(self, digest: str) -> bool:
         return self._exists(self._object_key(digest))
@@ -92,6 +94,15 @@ class S3Remote:
 
     def write_head(self, commit_id: str) -> None:
         self.client.put_object(Bucket=self.bucket, Key=self.prefix + "HEAD", Body=commit_id.encode())
+
+    def read_names(self) -> dict[str, str]:
+        from .remote import _parse_names
+
+        return _parse_names(self._read(self.prefix + "names.json"))
+
+    def write_names(self, names: dict[str, str]) -> None:
+        body = json.dumps(dict(sorted(names.items())), indent=2).encode()
+        self.client.put_object(Bucket=self.bucket, Key=self.prefix + "names.json", Body=body)
 
 
 def _error_code(err: Exception) -> str:
