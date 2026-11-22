@@ -204,6 +204,7 @@ The merge compares both sides with the last version they share. A file changed o
 - Credits use your producer name. The app asks for it once (home screen: "Your sounds are credited to … · Change") and uses it for every kit you start or get; under the save box you can change it for one kit. Changing it never rewrites the credits of versions already saved.
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
 - Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV, AIFF and FLAC files (8- to 32-bit integer, or float).
+- MP3 files are not decoded in Python. Their length and format come from the frame headers: the frame count in the Xing tag most encoders write, less the silence the encoder added at each end (LAME and FFmpeg record it), so the length is exact to the sample; without a tag, the frames are counted one by one. The waveform is drawn by the page, which decodes the file with the Web Audio API, as it does for AAC (`.m4a`) and Ogg files. Files over 30 MB are skipped. Tempo and note are not found for these formats yet.
 - Note detection compares a stretch of the sound with itself shifted by each possible period and takes the shortest shift at which it lines up almost exactly: one cycle of the note (the YIN method). It starts 60 ms after the loudest point, past the attack and an 808's slide into the note. A chord also repeats, but only at a period far below its notes, where nothing actually sounds, so a note is given only when a real share of the sound's energy is at that pitch. Snares and hats never line up well enough and get none. On generated sounds it named 120 of 120 808s correctly (sliding, up to 40 cents out of tune, heavily distorted) and 35 of 36 synth notes from C3 to B5; the one miss gave no answer. Chords, snares and hats got no note. A kick whose pitch falls fast can come out a step away from its body's note. It has not yet been measured on real sample packs.
 - Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.
 - `kit status` does not re-hash files whose size and modified time are unchanged, which keeps it fast on large kits. Files modified in the last two seconds are always re-hashed. The first read of a big kit, before anything is cached, shows its progress: a bar in the app, one updating line in the terminal.
@@ -225,6 +226,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
 | `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
+| `src/kit/mp3.py` | Length and format of MP3 files, from their frame headers |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
 | `src/kit/updates.py` | Asks GitHub whether a newer release is out |
@@ -262,7 +264,8 @@ The merge compares both sides with the last version they share. A file changed o
 | FLAC files (decoded in plain Python) | done |
 | Note of one-shots from their audio | done |
 | Stars, and comparing a version with any older one | done |
-| Waveforms for MP3 files | planned |
+| MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
+| Tempo and note for MP3 files | planned |
 | Storing large audio compressed (FLAC) | planned |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.

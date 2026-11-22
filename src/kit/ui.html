@@ -841,7 +841,7 @@ function waveBox(row, sound) {
   const box = h("div", {class: "wave", onclick: (event) => seek(row, sound, event)});
   box.dataset.source = sound.source;
   box.load = () => {  // called once the row is near the screen
-    drawWave(box);
+    drawWave(box, row, sound);
     if (!sound.bpm) listen(row, sound);
   };
   nearScreen.observe(box);
@@ -875,11 +875,19 @@ async function listen(row, sound) {
   if (none) filter(row.parentElement, none);  // it may match the search now
 }
 
-async function drawWave(box) {
+async function drawWave(box, row, sound) {
   let peaks = null;
   try {
     peaks = (await api(`/api/peaks?${box.dataset.source}`)).peaks;
   } catch (error) { /* leave it empty */ }
+  if (!peaks && BROWSER_DECODES.test(sound.path) && sound.size <= DECODE_LIMIT) {
+    // Kit cannot decode this format in Python, but the page can.
+    const decoded = await decodedPeaks(sound.source);
+    if (decoded) {
+      peaks = decoded.peaks;
+      if (!sound.info && row.isConnected) row.querySelector(".info").append(` · ${decoded.seconds.toFixed(2)} s`);
+    }
+  }
   if (!peaks || !peaks.length) {
     box.classList.add("empty");
     box.textContent = "no waveform";
@@ -899,6 +907,45 @@ async function drawWave(box) {
     svg.append(bar);
   });
   box.append(svg);
+}
+
+// Formats Kit does not decode in Python, but every web view can: WebKit on
+// macOS and Edge's WebView2 on Windows both play MP3 and AAC (Chrome and Edge
+// also Ogg). For these the page decodes the sound itself, with the Web Audio
+// API, and measures the waveform the same way Python does for a WAV file: the
+// loudest sample in each of 96 slices. Very big files are skipped, because a
+// decoded song takes hundreds of megabytes.
+const BROWSER_DECODES = /\.(mp3|m4a|aac|mp4|ogg|oga|opus)$/i;
+const DECODE_LIMIT = 30 * 1024 * 1024;
+const decodedCache = new Map();  // source -> promise of {peaks, seconds}, so a redraw does not decode again
+let decoder = null;
+
+function decodedPeaks(source, buckets = 96) {
+  if (!decodedCache.has(source)) decodedCache.set(source, (async () => {
+    try {
+      const response = await fetch(`/api/audio?${source}&t=${TOKEN}`);
+      if (!response.ok) return null;
+      // An offline context never plays anything, so no permission to play sound is needed.
+      decoder = decoder || new OfflineAudioContext(1, 1, 44100);
+      const audio = await decoder.decodeAudioData(await response.arrayBuffer());
+      const channels = Array.from({length: audio.numberOfChannels}, (_, c) => audio.getChannelData(c));
+      const per = Math.max(1, Math.ceil(audio.length / buckets));
+      const levels = [];
+      for (let start = 0; start < audio.length; start += per) {
+        const end = Math.min(start + per, audio.length);
+        let loudest = 0;
+        for (const data of channels) {
+          for (let i = start; i < end; i++) loudest = Math.max(loudest, Math.abs(data[i]));
+        }
+        levels.push(loudest);
+      }
+      const top = Math.max(0, ...levels);
+      return {peaks: levels.map((level) => (top > 0 ? level / top : 0)), seconds: audio.duration};
+    } catch (error) {
+      return null;  // a format this web view cannot decode, or a damaged file
+    }
+  })());
+  return decodedCache.get(source);
 }
 
 // Clicking a waveform starts that sound and jumps to the clicked position.

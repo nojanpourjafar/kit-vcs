@@ -1,7 +1,9 @@
 """Reading audio files: length, sample rate, a waveform outline, and tempo.
 
 Standard library only. It reads WAV, AIFF and FLAC files (see wavfile.py and
-flac.py) and quietly gives up on anything else (MP3, AAC).
+flac.py). For MP3 files it gives the length and format from their headers
+(mp3.py); their waveforms are drawn by the page, which can decode them.
+Anything else (AAC, Ogg) it quietly gives up on.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import sys
 from array import array
 from pathlib import Path
 
+from . import mp3
 from .wavfile import WavError, can_read, open_wav
 
 _WAVE_ERRORS = (WavError, EOFError, OSError, ZeroDivisionError, ValueError, struct.error, IndexError)
@@ -23,6 +26,8 @@ def describe(file_path: Path, name: str) -> str | None:
     `name` is the file's real name. It is passed separately because stored
     objects are named by hash and have no ".wav" or ".aif" on the end.
     """
+    if name.lower().endswith(".mp3"):
+        return mp3.describe(file_path)
     if not can_read(name):
         return None
     try:
