@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import webbrowser
 from pathlib import Path
 
@@ -370,8 +371,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+class _Progress:
+    """One line in the terminal, rewritten as a long first scan reads the kit."""
+
+    def __init__(self):
+        self.shown = 0.0
+
+    def __call__(self, files: int, files_total: int, done: int, total: int) -> None:
+        now = time.monotonic()
+        finished = files == files_total
+        if now - self.shown < 0.2 and not finished:
+            return  # a few updates a second is plenty
+        self.shown = now
+        line = f"Reading the kit: {files}/{files_total} files, {_size(done)} of {_size(total)}"
+        print("\r" + line, end="\n" if finished else "", file=sys.stderr, flush=True)
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if sys.stderr.isatty():
+        Repo.on_progress = _Progress()  # only in a real terminal, never in scripts or tests
     try:
         args.run(args)
     except KitError as err:

@@ -29,6 +29,8 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 4px; }
+.meter div { height: 100%; background: var(--accent); transition: width .3s; }
 #remote-label .sync { color: var(--accent); font-weight: 600; }
 .stack { display: grid; gap: 12px; margin-top: 12px; }
 .stack label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -519,12 +521,47 @@ function render() {
 }
 
 async function refresh() {
+  // The first time a big kit is opened, every file is read, which can take a
+  // while. If the answer is slow, show how far along the reading is.
+  const watching = setTimeout(() => showProgress(watching), 400);
   try {
     state = await api("/api/state");
     render();
   } catch (error) {
     $("#main").replaceChildren(h("p", {class: "muted"}, error.message));
+  } finally {
+    clearTimeout(watching);
+    reading = null;
   }
+}
+
+let reading = null;  // the timer asking for progress while a scan runs
+
+async function showProgress(started) {
+  reading = started;
+  while (reading === started) {
+    try {
+      const p = await api("/api/progress");
+      if (reading !== started) break;
+      if (p.files_total && p.files < p.files_total) {
+        const percent = Math.floor(p.bytes * 100 / Math.max(1, p.bytes_total));
+        $("#main").replaceChildren(h("section", {class: "card"},
+          h("h1", {}, "Reading your kit"),
+          h("p", {class: "muted"}, "Kit reads every file the first time, so later opens are instant."),
+          h("div", {class: "meter"}, h("div", {style: `width: ${percent}%`})),
+          h("p", {class: "muted"}, `${p.files.toLocaleString()} of ${p.files_total.toLocaleString()} files · ` +
+            `${size(p.bytes)} of ${size(p.bytes_total)}`)));
+      }
+    } catch (error) { /* try again */ }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+}
+
+function size(bytes) {
+  const units = ["bytes", "KB", "MB", "GB"];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+  return i ? `${bytes.toFixed(1)} ${units[i]}` : `${bytes} bytes`;
 }
 
 // ---- actions: save, restore, start ------------------------------------------

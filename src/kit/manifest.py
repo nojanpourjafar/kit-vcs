@@ -52,19 +52,24 @@ def is_ignored(rel: str, patterns: list[str]) -> bool:
     return False
 
 
-def scan(folder: Path, cache: dict | None = None) -> Manifest:
+def scan(folder: Path, cache: dict | None = None, progress=None) -> Manifest:
     """Hash every file in a kit folder and return its manifest.
 
     `cache` maps path -> [size, modified time, hash] from the previous scan.
     A file whose size and modified time are unchanged is not hashed again,
     which is what keeps `status` fast on a multi-gigabyte kit. The cache is
     updated in place.
+
+    `progress(files_done, files, bytes_done, bytes)` is called as files are
+    hashed, so a long first scan can show how far along it is. Files the
+    cache already knows are not counted: they take no time.
     """
     folder = Path(folder)
     patterns = load_ignore(folder)
     manifest: Manifest = {}
     fresh: dict = {}
     now = time.time_ns()
+    found = []  # first list the files, so the work ahead is known
     for dirpath, dirnames, filenames in os.walk(folder):
         dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
         for name in sorted(filenames):
@@ -80,12 +85,22 @@ def scan(folder: Path, cache: dict | None = None) -> Manifest:
             stat = path.stat()
             known = cache.get(rel) if cache is not None else None
             if known and known[0] == stat.st_size and known[1] == stat.st_mtime_ns:
-                digest = known[2]
+                found.append((rel, path, stat, known[2]))
             else:
-                digest = hash_file(path)
-            manifest[rel] = {"hash": digest, "size": stat.st_size}
-            if now - stat.st_mtime_ns > RACY_NS:
-                fresh[rel] = [stat.st_size, stat.st_mtime_ns, digest]
+                found.append((rel, path, stat, None))  # needs hashing
+
+    work = [stat.st_size for _, _, stat, digest in found if digest is None]
+    files_total, bytes_total = len(work), sum(work)
+    files_done = bytes_done = 0
+    for rel, path, stat, digest in found:
+        if digest is None:
+            digest = hash_file(path)
+            files_done, bytes_done = files_done + 1, bytes_done + stat.st_size
+            if progress:
+                progress(files_done, files_total, bytes_done, bytes_total)
+        manifest[rel] = {"hash": digest, "size": stat.st_size}
+        if now - stat.st_mtime_ns > RACY_NS:
+            fresh[rel] = [stat.st_size, stat.st_mtime_ns, digest]
     if cache is not None:
         cache.clear()
         cache.update(fresh)

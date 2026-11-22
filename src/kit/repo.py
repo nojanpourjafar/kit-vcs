@@ -51,6 +51,10 @@ class Merged:
 
 
 class Repo:
+    # Called while a scan hashes files: progress(files_done, files, bytes_done, bytes).
+    # The app and the command line set it to show how far a long first scan is.
+    on_progress = None
+
     def __init__(self, folder):
         self.folder = Path(folder).resolve()
         self.dir = self.folder / DIR
@@ -371,7 +375,7 @@ class Repo:
         if not isinstance(cache, dict):
             cache = {}
         before = dict(cache)
-        manifest = scan(self.folder, cache)
+        manifest = scan(self.folder, cache, self.on_progress)
         if cache != before:
             try:
                 _atomic_write(index, json.dumps(cache).encode())

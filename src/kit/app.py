@@ -80,6 +80,7 @@ class App:
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
         self._tempo: dict[str, float | None] = {}
+        self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
         if folder is not None:
             if not Path(folder).is_dir():
                 raise KitError(f"there is no folder at {folder}")
@@ -115,7 +116,14 @@ class App:
             raise KitError("open a kit folder first")
         if not (self.folder / DIR).is_dir():
             raise KitError("this folder is not a Kit repo yet")
-        return Repo(self.folder)
+        repo = Repo(self.folder)
+        repo.on_progress = self._report
+        return repo
+
+    def _report(self, files: int, files_total: int, done: int, total: int) -> None:
+        # Read by /api/progress while the scan runs. A dict replaced whole, so a
+        # reader on another thread always sees one consistent set of numbers.
+        self.progress = {"files": files, "files_total": files_total, "bytes": done, "bytes_total": total}
 
     # ---- reading ---------------------------------------------------------
 
@@ -405,6 +413,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._run(self.app.state)
         if url.path == "/api/version":
             return self._run(lambda: self.app.version(query.get("ref", "latest")))
+        if url.path == "/api/progress":
+            # No lock: this answers while a long scan holds it.
+            return self._json(200, self.app.progress)
         if url.path == "/api/tempo":
             return self._run(lambda: {"bpm": self.app.tempo(query)}, lock=False)
         if url.path == "/api/peaks":
