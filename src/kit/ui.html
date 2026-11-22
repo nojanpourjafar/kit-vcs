@@ -232,8 +232,8 @@ function soundRow(sound, live) {
   return row;
 }
 
-// In the desktop app on a Mac, a sound can be dragged out of the window into FL
-// Studio. A web page cannot hand a real file to another program, so once the
+// In the desktop app (macOS and Windows), a sound can be dragged out of the window
+// into FL Studio. A web page cannot hand a real file to another program, so once the
 // mouse has moved a few pixels with the button held down, the page asks Python
 // to start a native drag, the kind Finder starts. Buttons and the waveform keep
 // their own clicks.

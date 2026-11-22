@@ -44,12 +44,17 @@ class Bridge:
     def drag_sound(self, path: str) -> bool:
         """Start dragging a sound out of the window. Returns False where that is not supported."""
         file, _ = self._app.locate({"path": path})  # refuses .kit and paths outside the kit
-        if sys.platform != "darwin":
-            return False  # Windows and Linux: use the Show in Explorer button instead
-        from . import dragout_mac
+        if sys.platform == "darwin":
+            from . import dragout_mac
 
-        dragout_mac.start(self._window.native, file)
-        return True
+            dragout_mac.start(self._window.native, file)
+            return True
+        if sys.platform == "win32":
+            from . import dragout_windows
+
+            dragout_windows.start(self._window.native, file)
+            return True
+        return False  # Linux: use the Show in folder button instead
 
 
 def _load_webview():

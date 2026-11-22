@@ -63,7 +63,7 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them.
 
-A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app` on a Mac, sounds can also be dragged straight out of the window. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`; see below for how reliable that is. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
+A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`; see below for how reliable that is. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, and Enter in the search box plays the first match.
 
 To have Kit in its own window, the way a desktop app looks, install one extra package and use `kit app`:
 
@@ -221,6 +221,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/ui.html` | The page: layout, styles and script in one file |
 | `src/kit/desktop.py` | `kit app`: the page in a native window, with a folder chooser |
 | `src/kit/dragout_mac.py` | Dragging a sound out of the window on macOS (PyObjC) |
+| `src/kit/dragout_windows.py` | Dragging a sound out of the window on Windows (Windows Forms, through pythonnet) |
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 | `scripts/release.py` | Publishes a new version (`make release`) |
@@ -240,7 +241,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Browser app (`kit ui`) | done |
 | Desktop window (`kit app`) and a double-click build | done, not yet tried on Windows |
 | Hash cache, `.kitignore`, `kit verify` | done |
-| Drag sounds from the window into FL Studio (macOS); Show in Finder / Explorer | done |
+| Drag sounds from the window into FL Studio (macOS, and Windows not yet tried by a person); Show in Finder / Explorer | done |
 | Warnings for file names Windows cannot hold | done |
 | Hosted service: accounts, private and paid packs, download tracking | planned |
 | WAV files with float samples or the extensible header (own WAV reader) | done |

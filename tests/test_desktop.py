@@ -118,8 +118,19 @@ def test_dragging_is_refused_outside_the_kit(bridge, monkeypatch):
     assert bridge.started == []
 
 
-def test_other_systems_say_dragging_is_not_supported(bridge, monkeypatch):
+def test_a_sound_can_be_dragged_out_on_windows(bridge, monkeypatch):
+    started = []
+    fake = types.SimpleNamespace(start=lambda form, file: started.append((form, file)))
+    monkeypatch.setitem(sys.modules, "kit.dragout_windows", fake)
+    monkeypatch.delattr("kit.dragout_windows", raising=False)
     monkeypatch.setattr(desktop.sys, "platform", "win32")
+    assert bridge.drag_sound("Kicks/kick_01.wav") is True
+    [(form, file)] = started
+    assert form == "the NSWindow" and file.name == "kick_01.wav"   # the stand-in window from the fixture
+
+
+def test_linux_says_dragging_is_not_supported(bridge, monkeypatch):
+    monkeypatch.setattr(desktop.sys, "platform", "linux")
     assert bridge.drag_sound("Kicks/kick_01.wav") is False and bridge.started == []
 
 
@@ -151,3 +162,19 @@ def test_kit_app_and_kit_ui_pass_dev_on(monkeypatch):
     cli.main(["ui", "--dev", "--no-open"])
     cli.main(["app"])
     assert calls == [("app", True), ("ui", True), ("app", False)]
+
+
+def test_the_windows_drag_code_builds_what_explorer_would(tmp_path):
+    # Runs on Windows with pywebview installed (GitHub's Windows test machines):
+    # the real .NET calls, everything except moving the mouse.
+    pytest.importorskip("clr")
+    if sys.platform != "win32":
+        pytest.skip("Windows Forms is only on Windows")
+    import importlib
+
+    module = importlib.import_module("kit.dragout_windows")
+    sound = tmp_path / "kick.wav"
+    sound.write_bytes(b"KICK")
+    data = module.file_drop(sound)
+    assert data.GetDataPresent(module.DataFormats.FileDrop)
+    assert list(data.GetData(module.DataFormats.FileDrop)) == [str(sound)]
