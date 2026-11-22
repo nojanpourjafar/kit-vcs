@@ -26,6 +26,11 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
+.section-tools { display: flex; align-items: center; gap: 8px; }
+.section-tools .search { width: min(240px, 40vw); }
+.star { padding: 4px 8px; font-size: 15px; line-height: 1; color: var(--muted); }
+.star.on, button.only.on { color: var(--accent); border-color: var(--accent); }
+button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
@@ -233,6 +238,10 @@ function soundRow(sound, live) {
     h("div", {class: "info"}, info.join(" · "))));
   row.append(waveBox(row, sound));
   if (live) {
+    row.dataset.starred = sound.starred ? "1" : "";
+    row.append(h("button", {class: sound.starred ? "star on" : "star", "aria-pressed": String(Boolean(sound.starred)),
+      title: "Star this sound (S). Stars are yours alone: they are never pushed.",
+      "aria-label": `Star ${sound.path}`, onclick: () => star(row, sound)}, sound.starred ? "★" : "☆"));
     row.append(h("button", {class: "reveal", title: state.reveal, "aria-label": `${state.reveal}: ${sound.path}`,
       onclick: (event) => act("reveal", {path: sound.path}, event.currentTarget)}, "↗"));
     dragOut(row, sound);
@@ -267,7 +276,7 @@ function dragOut(row, sound) {
 }
 
 function soundSection(title, sounds, live = false) {
-  const list = h("ul", {class: "sounds"}, sounds.map((sound) => soundRow(sound, live)));
+  const list = h("ul", {class: live ? "sounds live" : "sounds"}, sounds.map((sound) => soundRow(sound, live)));
   const none = h("p", {class: "muted none", hidden: true});
   if (sounds.length < 2) return h("section", {}, h("h2", {}, title), list);
   const box = h("input", {type: "search", class: "search", value: search, "aria-label": "Search sounds",
@@ -275,8 +284,40 @@ function soundSection(title, sounds, live = false) {
     onkeydown: (event) => {
       if (event.key === "Escape") { box.value = search = ""; filter(list, none); box.blur(); }
     }});
+  const tools = h("div", {class: "section-tools"}, box);
+  if (live) {
+    // Show only the starred sounds. Stars belong to the folder as it is now, so
+    // this is on the "Now" screen only.
+    const only = h("button", {class: starredOnly ? "only on" : "only", "aria-pressed": String(starredOnly),
+      title: "Show only starred sounds", onclick: () => {
+        starredOnly = !starredOnly;
+        only.classList.toggle("on", starredOnly);
+        only.setAttribute("aria-pressed", String(starredOnly));
+        filter(list, none);
+      }}, "★ Starred");
+    tools.prepend(only);
+  }
   filter(list, none);
-  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), box), list, none);
+  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), list, none);
+}
+
+// Star or unstar a sound. Only the row changes: redrawing the whole screen
+// would interrupt a sound that is playing.
+async function star(row, sound) {
+  const on = row.dataset.starred !== "1";
+  try {
+    await api("/api/star", {path: sound.path, on});
+  } catch (error) {
+    return toast(error.message, true);
+  }
+  sound.starred = on;  // so a redraw from the same state keeps it
+  row.dataset.starred = on ? "1" : "";
+  const button = row.querySelector(".star");
+  button.classList.toggle("on", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.textContent = on ? "★" : "☆";
+  const none = row.closest("section").querySelector(".none");
+  if (none && starredOnly) filter(row.parentElement, none);  // an unstarred sound leaves the list
 }
 
 // ---- search ---------------------------------------------------------------
@@ -285,6 +326,7 @@ function soundSection(title, sounds, live = false) {
 // redrawn often (after a save, when the window comes back into focus), and a
 // new box starts empty; this way the search survives the redraw.
 let search = "";
+let starredOnly = false;  // the "★ Starred" button on the "Now" screen
 
 // What the search looks through for one sound: its path, plus its tempo and key
 // written the ways people type them, so "140", "140bpm", "f#m" and "f# minor"
@@ -320,20 +362,24 @@ function filter(list, none) {
     text = text.replace(match[0], " ");
   }
   const words = text.split(/\s+/).filter(Boolean);
+  const onlyStars = starredOnly && list.classList.contains("live");
   let shown = 0;
   for (const row of list.children) {
-    row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key));
+    row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key)
+      && (!onlyStars || row.dataset.starred === "1"));
     if (!row.hidden) shown++;
   }
   none.hidden = shown > 0;
-  none.textContent = `No sounds match "${search}".`;
+  none.textContent = !onlyStars ? `No sounds match "${search}".`
+    : search.trim() ? `No starred sounds match "${search}".`
+    : "No starred sounds yet. Click ☆ on a sound, or choose one and press S.";
 }
 
 // ---- keyboard ---------------------------------------------------------------
 
 // /  jump to the search box (as on GitHub)      Esc  clear the search
 // ↑ ↓  choose a sound                            Space  play or pause it
-// Enter in the search box  play the first match
+// Enter in the search box  play the first match  S  star or unstar it
 
 // The chosen sound's path. Kept outside the rows, like `search`, so the choice
 // survives the screen being redrawn.
@@ -379,6 +425,9 @@ document.addEventListener("keydown", (event) => {
   } else if (event.key === "Enter" && inSearch) {
     const row = visibleRows()[0];
     if (row) { select(row); play(row); }
+  } else if (event.key.toLowerCase() === "s" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    const row = visibleRows().find((candidate) => candidate.dataset.path === selected);
+    if (row && row.querySelector(".star")) row.querySelector(".star").click();  // only on the "Now" screen
   }
 });
 

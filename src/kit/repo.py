@@ -399,6 +399,40 @@ class Repo:
     def _save_conflicts(self, conflicts: list[dict]) -> None:
         _atomic_write(self.dir / "conflicts.json", json.dumps(conflicts, indent=2).encode())
 
+    # ---- stars -----------------------------------------------------------
+    # Your favourite sounds. They are yours alone: kept in this copy of the
+    # kit and never pushed, so starring a sound changes nothing for anyone else
+    # and is not a change to save.
+
+    def stars(self) -> set[str]:
+        """The paths of the sounds you starred."""
+        try:
+            data = json.loads((self.dir / "stars.json").read_text())
+        except (OSError, ValueError):
+            return set()
+        return {path for path in data if isinstance(path, str)} if isinstance(data, list) else set()
+
+    def star(self, path: str, on: bool = True) -> None:
+        """Star a sound in the folder (or take its star off, with on=False)."""
+        if on and not self._safe_path(path).is_file():
+            raise KitError(f"there is no sound at {path}")
+        stars = self.stars()
+        if on:
+            stars.add(path)
+        else:
+            stars.discard(path)
+        self._save_stars(stars)
+
+    def follow_renames(self, changes: list[Change]) -> None:
+        """Move stars along with renamed sounds, so a favourite stays starred under its new name."""
+        stars = self.stars()
+        moved = {c.old_path: c.path for c in changes if c.kind == "renamed" and c.old_path in stars}
+        if moved:
+            self._save_stars((stars - moved.keys()) | set(moved.values()))
+
+    def _save_stars(self, stars: set[str]) -> None:
+        _atomic_write(self.dir / "stars.json", json.dumps(sorted(stars), indent=2).encode())
+
     def credits(self, ref: str | None = None) -> dict[str, Commit]:
         """For each file in a version, the commit that first brought in that audio.
 

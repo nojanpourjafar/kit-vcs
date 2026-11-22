@@ -169,7 +169,13 @@ class App:
         saved = repo.manifest_of(repo.head())
         working = repo.working()
         changes = diff(saved, working)
+        repo.follow_renames(changes)
+        stars = repo.stars()
         by_hash = {saved[path]["hash"]: commit for path, commit in repo.credits().items()}
+        sounds = self._sounds(working, changes, by_hash, labels,
+                              locate=lambda path, entry: repo.folder / path, key="path", before=saved)
+        for sound in sounds:
+            sound["starred"] = sound["path"] in stars
         return {
             "repo": True,
             "name": self.folder.name,
@@ -182,8 +188,7 @@ class App:
                 for c in history
             ],
             "changes": [vars(change) for change in changes],
-            "sounds": self._sounds(working, changes, by_hash, labels,
-                                   locate=lambda path, entry: repo.folder / path, key="path", before=saved),
+            "sounds": sounds,
             "removed": [c.path for c in changes if c.kind == "removed"],
             "reveal": REVEAL_LABEL,
             "warnings": names.warnings(working),
@@ -342,6 +347,9 @@ class App:
             return {"message": f"Opened {self.folder.name}"}
         if action == "close":
             self.folder = None
+            return {"message": ""}
+        if action == "star":
+            self.repo().star(body.get("path") or "", bool(body.get("on", True)))
             return {"message": ""}
         if action == "forget":
             name = self.forget(body.get("folder") or "")
