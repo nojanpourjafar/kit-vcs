@@ -64,6 +64,12 @@ def reveal(path: Path) -> None:
         subprocess.Popen(["xdg-open", str(path.parent)])  # Linux file managers cannot select a file
 
 
+def downloads_folder() -> Path:
+    """Where exported zips go: the Downloads folder, where people look for them."""
+    downloads = Path.home() / "Downloads"
+    return downloads if downloads.is_dir() else Path.home()
+
+
 class App:
     """The state behind the page: one kit folder, and the actions on it."""
 
@@ -277,6 +283,15 @@ class App:
             if result.conflicts:
                 message += " Some sounds were changed on both sides: listen to both and choose, at the top."
             return {"message": message}
+        if action == "export":
+            from .export import export
+
+            out, sounds, _ = export(repo, body.get("version") or "latest", downloads_folder())
+            try:
+                reveal(out)  # show it in Finder, ready to send
+            except OSError:
+                pass  # the zip is there either way; the message says where
+            return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
         if action == "resolve":
             done = repo.settle(body.get("path", ""), body.get("keep", ""))
             return {"message": done + " Save a version to share the choice."}

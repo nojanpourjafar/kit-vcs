@@ -137,6 +137,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit ui` | Open Kit as an app in your browser |
 | `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
 | `kit show [v2]` | Write a version out as a single web page you can send to someone |
+| `kit export [v2]` | Save a version as a plain zip next to the kit, for people who do not use Kit |
 | `kit remote [where]` | Show or set the default remote |
 | `kit push [where]` | Send new versions to a remote |
 | `kit pull [where]` | Get new versions from a remote, merging if needed |
@@ -204,6 +205,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
 | `src/kit/audio.py` | WAV length, sample rate and waveform outline |
+| `src/kit/export.py` | A version as a plain zip (`kit export`) |
 | `src/kit/report.py` | The `kit show` web page |
 | `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
 | `src/kit/ui.html` | The page: layout, styles and script in one file |

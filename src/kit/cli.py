@@ -227,6 +227,14 @@ def cmd_show(args) -> None:
         webbrowser.open(out.resolve().as_uri())
 
 
+def cmd_export(args) -> None:
+    from .export import export
+
+    repo = Repo.find()
+    out, sounds, total = export(repo, args.version or "latest", Path(args.output or repo.folder.parent))
+    print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
+
+
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
@@ -307,6 +315,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("folder", nargs="?", help="where to put it (default: the remote's name)")
     p.add_argument("--author", help="your producer name, used for credits")
     p.set_defaults(run=cmd_clone)
+
+    p = sub.add_parser("export", help="save a version as a plain zip, for people who do not use Kit")
+    p.add_argument("version", nargs="?", help="default: the latest version")
+    p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
+    p.set_defaults(run=cmd_export)
 
     p = sub.add_parser("show", help="open a version as a web page with waveforms and players")
     p.add_argument("version", nargs="?", help="default: the latest version")

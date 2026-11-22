@@ -370,6 +370,7 @@ function renderNow() {
     box.append(saveForm());
   } else {
     box.append(h("h1", {}, latest ? `Everything is saved in ${latest.label}` : "Nothing saved yet"));
+    if (latest) box.append(h("div", {class: "row"}, exportButton(latest.id, latest.label)));
     if (!state.sounds.length) {
       box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
     }
@@ -383,6 +384,12 @@ function renderNow() {
     removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];
   parts.push(splitSection(state.sounds));
   $("#main").replaceChildren(...parts.filter(Boolean));
+}
+
+// Save a version as a plain zip in Downloads, for people who do not use Kit.
+function exportButton(id, label) {
+  return h("button", {onclick: (event) => act("export", {version: id}, event.currentTarget)},
+    `Export ${label} as zip`);
 }
 
 // ---- sounds both sides changed ---------------------------------------------
@@ -552,11 +559,14 @@ async function renderVersion(id) {
     h("h1", {}, `${version.label}: ${version.message}`),
     h("p", {class: "muted"},
       `${version.author} · ${when(version.time)} · ${plural(version.sounds.length, "sound")}`));
+  const buttons = h("div", {class: "row"});
   if (!version.latest) {
-    box.append(h("div", {class: "row"}, h("button", {class: "primary",
+    buttons.append(h("button", {class: "primary",
       onclick: (event) => act("restore", {version: version.id}, event.currentTarget)},
-      `Put the folder back to ${version.label}`)));
+      `Put the folder back to ${version.label}`));
   }
+  buttons.append(exportButton(version.id, version.label));
+  box.append(buttons);
   $("#main").replaceChildren(...[box, soundSection(`Sounds in ${version.label}`, version.sounds),
     removedSection(`Removed in ${version.label}`, version.removed)].filter(Boolean));
 }
