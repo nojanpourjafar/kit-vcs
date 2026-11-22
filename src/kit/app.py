@@ -226,6 +226,20 @@ class App:
 
     # ---- actions ---------------------------------------------------------
 
+    def _clone(self, body: dict) -> dict:
+        """Get a kit someone shared: copy it from the shared folder into a new folder, and open it."""
+        spec = (body.get("remote") or "").strip()
+        into = (body.get("into") or "").strip()
+        if not spec:
+            raise KitError("choose the shared folder first")
+        if not into:
+            raise KitError("choose where to put the kit")
+        spec = remote.normalize(spec)
+        name = spec.rstrip("/").rsplit("/", 1)[-1].rsplit("\\", 1)[-1] or "shared kit"
+        repo, result = remote.clone(spec, Path(into).expanduser() / name)
+        self.open(repo.folder)
+        return {"message": f"Got {name}: {result.commits} version(s)."}
+
     def act(self, action: str, body: dict) -> dict:
         """Run one action from the page and say what happened."""
         if action == "open":
@@ -240,6 +254,8 @@ class App:
         if action == "close":
             self.folder = None
             return {"message": ""}
+        if action == "clone":
+            return self._clone(body)
         if self.folder is None:
             raise KitError("open a kit folder first")
         if action == "reveal":

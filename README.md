@@ -72,7 +72,7 @@ pip install -e ".[app]"
 kit app
 ```
 
-It starts on the home screen, with a button that opens the system's folder chooser. The window is the same page as `kit ui`, shown by [pywebview](https://pywebview.flowrl.com/) in the system's built-in web view, so no browser is bundled. `kit app --browser`, or running it without pywebview installed, uses the browser instead.
+It starts on the home screen, with a button that opens the system's folder chooser. The home screen also has **Get a shared kit**: choose the folder a kit was shared in (a Google Drive or Dropbox folder, say) and where to put your copy, and Kit clones it; no Terminal needed. The window is the same page as `kit ui`, shown by [pywebview](https://pywebview.flowrl.com/) in the system's built-in web view, so no browser is bundled. `kit app --browser`, or running it without pywebview installed, uses the browser instead.
 
 ### A double-click app
 

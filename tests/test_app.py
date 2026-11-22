@@ -7,7 +7,7 @@ import urllib.request
 
 import pytest
 
-from kit.app import make_server
+from kit.app import App, make_server
 from kit.repo import KitError, Repo
 
 
@@ -296,3 +296,32 @@ def test_dev_mode_tells_the_page_when_ui_html_was_saved(kit, tmp_path, monkeypat
 def test_dev_mode_is_off_unless_asked_for(app):
     assert b"const DEV = false;" in app("/", token="")[1]
     assert app("/api/dev")[0] == 404
+
+
+def test_a_shared_kit_can_be_got_from_the_home_screen(kit, tmp_path):
+    from kit import remote
+
+    shared = tmp_path / "Google Drive" / "dark-trap"
+    mine = Repo.init(kit, author="Nojan")
+    mine.commit("first")
+    remote.push(mine, remote.FolderRemote(shared))            # Nojan shares the kit
+
+    friend = App()                                            # a friend's app, on the home screen
+    music = tmp_path / "Music"
+    message = friend.act("clone", {"remote": str(shared), "into": str(music)})["message"]
+
+    assert message == "Got dark-trap: 1 version(s)."
+    assert (music / "dark-trap" / "Kicks" / "kick_01.wav").read_bytes() == b"KICK" * 100
+    state = friend.state()
+    assert state["name"] == "dark-trap" and state["remote"] == str(shared.resolve())
+    assert [k["name"] for k in friend.recent()] == ["dark-trap"]
+
+
+def test_getting_a_shared_kit_explains_what_is_missing(tmp_path):
+    friend = App()
+    for body, error in [({"into": str(tmp_path)}, "choose the shared folder"),
+                        ({"remote": str(tmp_path / "x")}, "choose where to put the kit"),
+                        ({"remote": str(tmp_path / "empty"), "into": str(tmp_path)}, "nothing to clone")]:
+        with pytest.raises(KitError, match=error):
+            friend.act("clone", body)
+    assert friend.folder is None                              # still on the home screen

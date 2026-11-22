@@ -29,6 +29,9 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.stack { display: grid; gap: 12px; margin-top: 12px; }
+.stack label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.stack .row { margin-top: 0; } .stack .row input { flex: 1; }
 .conflicts { border-color: var(--modified); }
 .conflict { display: grid; gap: 8px; margin-top: 14px; }
 .conflict .sounds .sound { background: var(--bg); }
@@ -123,14 +126,15 @@ input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); backgro
     <button id="btn-home" hidden>All kits</button></div>
   <div class="actions" hidden>
     <span id="remote-label"></span>
-    <button id="btn-remote">Set remote</button>
+    <button id="btn-remote">Shared folder</button>
     <button id="btn-pull">Pull</button>
     <button id="btn-push">Push</button>
   </div>
 </header>
 <form id="remote-form" hidden>
-  <input type="text" id="remote-input" aria-label="Remote" placeholder="A shared folder, like ~/GoogleDrive/my-kit, or s3://bucket/my-kit">
-  <button class="primary" id="remote-save">Save remote</button>
+  <input type="text" id="remote-input" aria-label="Shared folder" placeholder="A shared folder, like ~/GoogleDrive/my-kit, or s3://bucket/my-kit">
+  <button type="button" class="pick" id="remote-pick">Choose…</button>
+  <button class="primary" id="remote-save">Save</button>
 </form>
 <div class="layout">
   <aside><h2>History</h2><ol id="history"></ol></aside>
@@ -437,6 +441,35 @@ function renderStart() {
 // web page a folder's full path, so there the path is typed in.
 const inDesktopApp = () => Boolean(window.pywebview && window.pywebview.api);
 
+// Fill a text box from the system's folder chooser (desktop app only).
+async function pickInto(input) {
+  const folder = await window.pywebview.api.pick_folder();
+  if (folder) input.value = folder;
+}
+
+// A text box for a folder, with a Choose… button next to it in the desktop app.
+function folderField(label, placeholder, value = "") {
+  const input = h("input", {type: "text", "aria-label": label, placeholder, value});
+  const field = h("div", {class: "row"}, input);
+  if (inDesktopApp()) field.append(h("button", {type: "button", onclick: () => pickInto(input)}, "Choose…"));
+  return {field, input};
+}
+
+// Get a kit someone shared with you: the folder they push to (Google Drive,
+// Dropbox, a USB stick), and where to put your copy.
+function sharedKitCard() {
+  const from = folderField("Shared folder", "The folder it was shared in, like ~/Google Drive/kits/dark-trap");
+  const into = folderField("Put it in", "Where to put your copy, like ~/Music", "~/Music");
+  return h("section", {class: "card"},
+    h("h1", {}, "Get a shared kit"),
+    h("p", {class: "muted"}, "A kit someone pushed to a shared folder. Kit copies every version and keeps it in sync."),
+    h("form", {class: "stack", onsubmit: (event) => {
+      event.preventDefault();
+      act("clone", {remote: from.input.value, into: into.input.value}, event.submitter);
+    }}, h("label", {}, "Shared folder", from.field), h("label", {}, "Put it in", into.field),
+      h("div", {class: "row"}, h("button", {class: "primary"}, "Get the kit"))));
+}
+
 function renderHome() {
   const box = h("section", {class: "card"}, h("h1", {}, "Your kits"));
   if (state.recent.length) {
@@ -459,7 +492,7 @@ function renderHome() {
       act("open", {folder: path.value}, event.submitter);
     }}, path, h("button", {class: "primary"}, "Open folder")));
   }
-  $("#main").replaceChildren(box);
+  $("#main").replaceChildren(box, sharedKitCard());
 }
 
 function render() {
@@ -470,6 +503,7 @@ function render() {
   $("aside").hidden = home || !state.repo;
   $(".layout").classList.toggle("single", home || !state.repo);
   $(".actions").hidden = home || !state.repo;
+  $("#remote-pick").hidden = !inDesktopApp();
   if (home) {
     view = "now";                       // the next kit opens on its current state,
     $("#remote-form").hidden = true;    // with nothing left over from this one
@@ -679,11 +713,12 @@ function seek(row, sound, event) {
 // ---- sharing: remote, push, pull, and who added what ------------------------------
 
 function renderRemote() {
-  $("#remote-label").textContent = state.remote ? `Remote: ${state.remote}` : "No remote yet";
+  $("#remote-label").textContent = state.remote ? `Shared with ${state.remote}` : "Not shared yet";
   if (!$("#remote-input").value) $("#remote-input").value = state.remote || "";
 }
 
 $("#btn-remote").addEventListener("click", () => { $("#remote-form").hidden = !$("#remote-form").hidden; });
+$("#remote-pick").addEventListener("click", () => pickInto($("#remote-input")));
 $("#remote-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (await act("remote", {remote: $("#remote-input").value}, $("#remote-save"))) $("#remote-form").hidden = true;
