@@ -89,6 +89,9 @@ button { cursor: pointer; border: 1px solid var(--line); background: var(--card)
   border-radius: 8px; padding: 7px 14px; }
 button:hover { border-color: var(--muted); }
 button:disabled { opacity: .5; cursor: default; }
+select { font: inherit; color: inherit; border: 1px solid var(--line); background: var(--card);
+  border-radius: 8px; padding: 5px 8px; max-width: 100%; }
+.compare { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 12px 0 0; color: var(--muted); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 input[type=text] { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg);
@@ -193,6 +196,7 @@ async function api(path, body) {
 
 let state = null;   // the latest answer from /api/state
 let view = "now";
+let against = null;  // the version the open one is compared with; null means the one before it
 let draft = "";
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -664,7 +668,7 @@ function nameLine(text) {
 // ---- history and saved versions ----------------------------------------------
 
 function historyItem(id, label, text, sub, names = []) {
-  return h("li", {}, h("button", {class: view === id ? "here" : "", onclick: () => { view = id; render(); }},
+  return h("li", {}, h("button", {class: view === id ? "here" : "", onclick: () => { view = id; against = null; render(); }},
     h("strong", {}, label, names.map((name) => h("span", {class: "badge named"}, name))),
     h("span", {}, text), sub && h("small", {}, sub)));
 }
@@ -679,7 +683,7 @@ function renderHistory() {
 async function renderVersion(id) {
   let version;
   try {
-    version = await api(`/api/version?ref=${id}`);
+    version = await api(`/api/version?ref=${id}${against ? `&against=${against}` : ""}`);
   } catch (error) {
     toast(error.message, true);
     view = "now";
@@ -699,13 +703,33 @@ async function renderVersion(id) {
   buttons.append(exportButton(version.id, version.names[0] || version.label));
   buttons.append(nameButton(version));
   box.append(buttons);
+  box.append(compareLine(version, id));
   if (version.names.length) {
     box.append(h("p", {class: "names"}, "Named ", version.names.map((name) =>
       h("span", {class: "badge named"}, name, h("button", {class: "link", title: `Remove the name ${name}`,
         "aria-label": `Remove the name ${name}`, onclick: (event) => act("unname", {name}, event.currentTarget)}, "×")))));
   }
+  const since = version.against ? `since ${version.against.label}` : `in ${version.label}`;
   $("#main").replaceChildren(...[box, soundSection(`Sounds in ${version.label}`, version.sounds),
-    removedSection(`Removed in ${version.label}`, version.removed)].filter(Boolean));
+    removedSection(`Removed ${since}`, version.removed)].filter(Boolean));
+}
+
+// "Compared with [v3, the version before] · 2 added, 1 modified". Picking an
+// older version shows everything that changed since then, as one set of
+// changes: the badges, the removed list and the Before buttons all follow it.
+// So "what's different since the kit I sent last week?" is one click.
+function compareLine(version, id) {
+  if (!version.against) return h("p", {class: "compare"}, "The first version: every sound is new");
+  const at = state.versions.findIndex((v) => v.id === version.id);
+  const older = state.versions.slice(at + 1);
+  const what = summary(version.changes) || "no changes";
+  if (older.length < 2) return h("p", {class: "compare"}, `Compared with ${version.against.label} · ${what}`);
+  const choice = h("select", {"aria-label": "Compare with", onchange: () => {
+    against = choice.value === older[0].id ? null : choice.value;
+    renderVersion(id);
+  }}, older.map((v, i) => h("option", {value: v.id, selected: v.id === version.against.id},
+    i === 0 ? `${v.label}, the version before` : `${v.label}: ${v.message}`)));
+  return h("div", {class: "compare"}, "Compared with", choice, `· ${what}`);
 }
 
 // ---- sound: one shared player, and waveforms drawn on demand --------------------

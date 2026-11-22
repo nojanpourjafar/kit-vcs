@@ -191,14 +191,21 @@ class App:
             "sync": self._sync(repo),
         }
 
-    def version(self, ref: str) -> dict:
-        """Everything the screen for one saved version shows."""
+    def version(self, ref: str, against: str | None = None) -> dict:
+        """Everything the screen for one saved version shows.
+
+        Its changes are measured against `against` (any version), or by
+        default against the version before it. The first version has nothing
+        before it, so all of its sounds are new.
+        """
         repo = self.repo()
         history = repo.log()
         labels = {c.id: f"v{len(history) - i}" for i, c in enumerate(history)}
         commit = repo.load_commit(repo.resolve(ref))
         manifest = repo.manifest_of(commit.id)
-        changes = diff(repo.manifest_of(commit.parent), manifest)
+        base = repo.resolve(against) if against else commit.parent
+        before = repo.manifest_of(base)
+        changes = diff(before, manifest)
         by_hash = {manifest[path]["hash"]: c for path, c in repo.credits(commit.id).items()}
         return {
             "label": labels.get(commit.id, commit.id[:8]),
@@ -206,8 +213,10 @@ class App:
             "time": commit.time, "latest": commit.id == repo.head(), "names": repo.names_of(commit.id),
             "sounds": self._sounds(manifest, changes, by_hash, labels,
                                    locate=lambda path, entry: repo.store.path_for(entry["hash"]),
-                                   key="hash", before=repo.manifest_of(commit.parent)),
+                                   key="hash", before=before),
             "removed": [c.path for c in changes if c.kind == "removed"],
+            "changes": [vars(change) for change in changes],
+            "against": {"id": base, "label": labels.get(base, base[:8])} if base else None,
         }
 
     def _sounds(self, manifest, changes, by_hash, labels, locate, key, before=None) -> list[dict]:
@@ -484,7 +493,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/state":
             return self._run(self.app.state)
         if url.path == "/api/version":
-            return self._run(lambda: self.app.version(query.get("ref", "latest")))
+            return self._run(lambda: self.app.version(query.get("ref", "latest"), query.get("against")))
         if url.path == "/api/progress":
             # No lock: this answers while a long scan holds it.
             return self._json(200, self.app.progress)
