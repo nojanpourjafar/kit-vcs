@@ -216,3 +216,101 @@ def _samples(chunk: bytes, width: int) -> array:
     if sys.byteorder == "big":
         samples.byteswap()
     return samples
+
+
+# ---- the note of a one-shot -------------------------------------------------
+
+NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+LOWEST_HZ, HIGHEST_HZ = 27.5, 1000.0  # A0, the bottom of an 808, up to the top of most melodic one-shots
+
+
+def note(file_path: Path, name: str) -> str | None:
+    """The note a one-shot plays ("F#"), or None when it has no clear pitch.
+
+    Uses YIN (de Cheveigné and Kawahara, 2002): compare the sound with itself
+    shifted by each possible period, and take the shortest shift at which it
+    lines up almost perfectly. That shift is one cycle of the note.
+
+    The attack (the click of a kick, the pluck of a bass) has no steady pitch,
+    so the measurement starts a little after the loudest point. Drums with no
+    pitch (snares, hats) never line up well enough, and get None.
+    """
+    if not can_read(name):
+        return None
+    try:
+        with open_wav(file_path) as wav:
+            rate, channels = wav.rate, wav.channels
+            raw = wav.readframes(min(wav.frames, int(rate * 1.5)))  # the first 1.5 s is plenty
+            samples = _floats(raw, wav.width) if wav.is_float else _samples(raw, wav.width)
+    except _WAVE_ERRORS:
+        return None
+    if channels > 1:  # mix to mono
+        samples = [sum(samples[i:i + channels]) / channels for i in range(0, len(samples) - channels + 1, channels)]
+    else:
+        samples = list(samples)
+
+    # Work at about 11 kHz: plenty for notes up to 1 kHz, and four times less work.
+    step = max(1, rate // 11025)
+    if step > 1:
+        samples = [sum(samples[i:i + step]) / step for i in range(0, len(samples) - step + 1, step)]
+        rate //= step
+    if not samples:
+        return None
+    loudest = max(range(len(samples)), key=lambda i: abs(samples[i]))
+    start = loudest + int(0.06 * rate)  # skip the attack, and an 808's pitch slide into the note
+    window = int(0.12 * rate)  # long enough for several cycles of a low 808
+    longest = int(rate / LOWEST_HZ)
+    if start + window + longest > len(samples):
+        start = max(0, len(samples) - window - longest)
+        if start + window + longest > len(samples):
+            return None  # too short to measure
+
+    frame = samples[start:start + window + longest]
+    level = max(abs(x) for x in frame)
+    if level < 0.02 * abs(samples[loudest]) or level == 0:
+        return None  # it has died away by then: a click, not a note
+
+    # The YIN difference for each shift, normalised so that 0 means "lines up perfectly".
+    shortest = max(2, int(rate / HIGHEST_HZ))
+    running, normalised = 0.0, {}
+    head = frame[:window]
+    for shift in range(1, longest + 1):
+        moved = frame[shift:shift + window]
+        difference = sum((a - b) ** 2 for a, b in zip(head, moved))
+        running += difference
+        normalised[shift] = difference * shift / running if running else 1.0
+
+    # The first dip below the threshold, followed down to its bottom.
+    best = None
+    for shift in range(shortest, longest):
+        if normalised[shift] < 0.15:
+            while shift + 1 < longest and normalised[shift + 1] < normalised[shift]:
+                shift += 1
+            best = shift
+            break
+    if best is None:
+        return None  # nothing repeats cleanly: no clear pitch
+
+    # Between whole samples, with a parabola through the dip and its neighbours.
+    a, b, c = normalised[best - 1], normalised[best], normalised.get(best + 1, normalised[best])
+    period = best + (0.5 * (a - c) / (a - 2 * b + c) if a - 2 * b + c else 0)
+    hz = rate / period
+
+    # A chord repeats too, but only at a period far below its notes (C, E and G
+    # line up every cycle of a C two octaves down), and nothing sounds at that
+    # frequency. A real note carries much of its energy there. So measure the
+    # share of energy at exactly `hz` (the Goertzel algorithm: one bin of a
+    # Fourier transform) and give no note when it is small.
+    if _share_at(head, hz / rate) < 0.1:
+        return None
+    midi = round(69 + 12 * math.log2(hz / 440))
+    return NOTE_NAMES[midi % 12]
+
+
+def _share_at(samples: list[float], cycles_per_sample: float) -> float:
+    """The share (0 to 1) of the samples' energy at one frequency."""
+    omega = 2 * math.pi * cycles_per_sample
+    real = sum(x * math.cos(omega * i) for i, x in enumerate(samples))
+    imaginary = sum(x * math.sin(omega * i) for i, x in enumerate(samples))
+    total = sum(x * x for x in samples)
+    return 2 * (real * real + imaginary * imaginary) / (len(samples) * total) if total else 0.0
