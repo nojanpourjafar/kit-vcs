@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))  # works without installing Kit too
 
 from kit.audio import tempo  # noqa: E402
+from kit.wavfile import can_read  # noqa: E402
 from kit.manifest import dumps, scan  # noqa: E402
 from kit.tags import from_name  # noqa: E402
 
@@ -62,7 +63,7 @@ def measure(folder: Path, tempo_limit: int = 300) -> dict:
     named_bpm = {path: t["bpm"] for path, t in tags.items() if t["bpm"]}
     checked = {"exact": 0, "half or double": 0, "no answer": 0, "other": 0}
     misses = []
-    wavs = [path for path in sorted(named_bpm) if path.lower().endswith(".wav")][:tempo_limit]
+    wavs = [path for path in sorted(named_bpm) if can_read(path)][:tempo_limit]
     started = time.perf_counter()
     for path in wavs:
         expected, got = named_bpm[path], tempo(folder / path, path)
@@ -79,7 +80,7 @@ def measure(folder: Path, tempo_limit: int = 300) -> dict:
             misses.append({"path": path, "name says": expected, "estimate": got})
     tempo_seconds = time.perf_counter() - started
 
-    unnamed = [path for path in sorted(audio) if path.lower().endswith(".wav") and path not in named_bpm][:tempo_limit]
+    unnamed = [path for path in sorted(audio) if can_read(path) and path not in named_bpm][:tempo_limit]
     estimated = sum(tempo(folder / path, path) is not None for path in unnamed)
 
     return {
@@ -138,7 +139,7 @@ def report(m: dict) -> str:
     results, checked = m["tempo results"], m["tempo checked"]
     if checked:
         lines += [
-            f"  Tempo from the audio, checked against the BPM in the name ({checked} WAV files):",
+            f"  Tempo from the audio, checked against the BPM in the name ({checked} WAV and AIFF files):",
             f"    exact (within 1 BPM):  {share(results['exact'], checked)}",
             f"    half or double:        {share(results['half or double'], checked)}",
             f"    no answer:             {share(results['no answer'], checked)}   (one-shots land here, which is right)",
@@ -149,9 +150,9 @@ def report(m: dict) -> str:
             lines.append("  Misses (name says -> estimate):")
             lines += [f"    {miss['name says']:>5} -> {miss['estimate']:>6}   {miss['path']}" for miss in m["tempo misses"][:12]]
     else:
-        lines.append("  No WAV files with a BPM in their name, so tempo detection could not be checked here.")
+        lines.append("  No WAV or AIFF files with a BPM in their name, so tempo detection could not be checked here.")
     if m["unnamed wav loops tried"]:
-        lines.append(f"  WAV files with no BPM in the name that got an estimate: "
+        lines.append(f"  WAV and AIFF files with no BPM in the name that got an estimate: "
                      f"{m['unnamed wav loops estimated']} of {m['unnamed wav loops tried']}")
     return "\n".join(lines)
 

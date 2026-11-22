@@ -36,7 +36,10 @@ def wav_bytes(samples, kind="float", bits=32, channels=1, extensible=False, extr
         tag = 3
     else:
         top = 2 ** (bits - 1) - 1
-        one = lambda x: int(x * top).to_bytes(width, "little", signed=True)
+        if bits == 8:  # 8-bit WAV samples are unsigned: 0 to 255, silence at 128
+            one = lambda x: bytes([int(x * top) + 128])
+        else:
+            one = lambda x: int(x * top).to_bytes(width, "little", signed=True)
         tag = 1
     data = b"".join(one(x) * channels for x in samples)
     fmt = struct.pack("<HHIIHH", 0xFFFE if extensible else tag, channels, RATE, RATE * channels * width, channels * width, bits)
@@ -95,3 +98,62 @@ def test_files_that_are_not_readable_wavs_get_nothing(tmp_path):
         assert tempo(tmp_path / name, name) is None, name
         with pytest.raises((WavError, struct.error)):
             open_wav(tmp_path / name)
+
+
+# ---- AIFF ---------------------------------------------------------------------
+
+def extended(rate):
+    """A sample rate as AIFF writes it: an 80-bit floating-point number."""
+    exponent, mantissa = 16383 + 63, int(rate)
+    while mantissa < 2 ** 63:
+        mantissa <<= 1
+        exponent -= 1
+    return struct.pack(">HQ", exponent, mantissa)
+
+
+def aiff_bytes(samples, bits=16, channels=1, compression=None):
+    """An AIFF (or, with a compression code, an AIFC) file built by hand."""
+    width = bits // 8
+    if compression in (b"fl32", b"fl64"):
+        one = lambda x: struct.pack(">f" if compression == b"fl32" else ">d", x)
+    else:
+        top = 2 ** (bits - 1) - 1
+        order = "little" if compression == b"sowt" else "big"
+        one = lambda x: int(x * top).to_bytes(width, order, signed=True)
+    data = b"".join(one(x) * channels for x in samples)
+    comm = struct.pack(">hIh", channels, len(samples), bits) + extended(RATE)
+    if compression:
+        comm += compression + b"\x00\x00"  # compression name: an empty Pascal string, padded
+    ssnd = struct.pack(">II", 0, 0) + data
+    body = (b"AIFC" if compression else b"AIFF") + b"COMM" + struct.pack(">I", len(comm)) + comm
+    body += b"SSND" + struct.pack(">I", len(ssnd)) + ssnd
+    return b"FORM" + struct.pack(">I", len(body)) + body
+
+
+@pytest.mark.parametrize("bits, channels, compression", [
+    (16, 1, None),
+    (24, 2, None),
+    (8, 1, None),              # 8-bit AIFF samples are signed, unlike WAV
+    (16, 2, b"sowt"),          # AIFC with little-endian integers (what Logic often writes)
+    (32, 1, b"fl32"),          # AIFC with float samples
+    (64, 2, b"fl64"),
+])
+def test_aiff_files_are_read_like_wavs(tmp_path, bits, channels, compression):
+    samples = loop(100)
+    path = tmp_path / "loop.aif"
+    path.write_bytes(aiff_bytes(samples, bits, channels, compression))
+    layout = "mono" if channels == 1 else "stereo"
+    assert describe(path, "loop.aif") == f"4.80 s, 22.05 kHz, {layout}"
+    assert tempo(path, "loop.aif") == pytest.approx(100, abs=1)
+
+    # The same samples saved as a WAV give the same waveform.
+    kind = "float" if compression in (b"fl32", b"fl64") else "int"
+    same = tmp_path / "loop.wav"
+    same.write_bytes(wav_bytes(samples, kind, bits, channels))
+    assert peaks(path, "loop.aif") == pytest.approx(peaks(same, "loop.wav"), abs=0.02)
+
+
+def test_compressed_aiff_gets_nothing(tmp_path):
+    path = tmp_path / "ima.aifc"
+    path.write_bytes(aiff_bytes([0.1] * 100, 16, 1, b"ima4"))
+    assert describe(path, "ima.aifc") is None and peaks(path, "ima.aifc") is None

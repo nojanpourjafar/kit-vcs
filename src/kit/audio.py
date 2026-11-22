@@ -1,7 +1,7 @@
 """Reading audio files: length, sample rate, a waveform outline, and tempo.
 
-Standard library only. It reads WAV files (integer and floating-point samples,
-see wavfile.py) and quietly gives up on anything else (MP3, FLAC, AIFF).
+Standard library only. It reads WAV and AIFF files (integer and floating-point
+samples, see wavfile.py) and quietly gives up on anything else (MP3, FLAC).
 """
 
 from __future__ import annotations
@@ -12,18 +12,18 @@ import sys
 from array import array
 from pathlib import Path
 
-from .wavfile import WavError, open_wav
+from .wavfile import WavError, can_read, open_wav
 
 _WAVE_ERRORS = (WavError, EOFError, OSError, ZeroDivisionError, ValueError, struct.error)
 
 
 def describe(file_path: Path, name: str) -> str | None:
-    """Describe a WAV file, or return None if it is not one we can read.
+    """Describe a WAV or AIFF file, or return None if it is not one we can read.
 
     `name` is the file's real name. It is passed separately because stored
-    objects are named by hash and have no ".wav" on the end.
+    objects are named by hash and have no ".wav" or ".aif" on the end.
     """
-    if not name.lower().endswith(".wav"):
+    if not can_read(name):
         return None
     try:
         with open_wav(file_path) as wav:
@@ -40,7 +40,7 @@ def peaks(file_path: Path, name: str, buckets: int = 96) -> list[float] | None:
     This is the outline drawn as a waveform. Returns None for files we
     cannot read.
     """
-    if not name.lower().endswith(".wav"):
+    if not can_read(name):
         return None
     try:
         with open_wav(file_path) as wav:
@@ -96,7 +96,7 @@ def tempo(file_path: Path, name: str) -> float | None:
 
     One-shots and sounds without a steady pulse return None rather than a guess.
     """
-    if not name.lower().endswith(".wav"):
+    if not can_read(name):
         return None
     try:
         with open_wav(file_path) as wav:
