@@ -8,6 +8,7 @@ Anything else (AAC, Ogg) it quietly gives up on.
 
 from __future__ import annotations
 
+import cmath
 import math
 import struct
 import sys
@@ -341,3 +342,139 @@ def _share_at(samples: list[float], cycles_per_sample: float) -> float:
     imaginary = sum(x * math.sin(omega * i) for i, x in enumerate(samples))
     total = sum(x * x for x in samples)
     return 2 * (real * real + imaginary * imaginary) / (len(samples) * total) if total else 0.0
+
+
+# ---- the key of a melodic loop ---------------------------------------------------
+
+# How strongly each of the 12 notes belongs to a key, from listening tests
+# (Krumhansl and Kessler, 1982). Index 0 is the key's own note.
+MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+KEY_RATE = 5512          # Hz: plenty for notes up to about 2 kHz
+KEY_WINDOW = 4096        # samples per slice: about 0.74 s, fine enough to tell neighbouring low notes apart
+KEY_SLICES = 16          # slices measured, spread over the loop
+KEY_LOWEST, KEY_HIGHEST = 55.0, 2000.0
+
+
+def key(file_path: Path, name: str) -> str | None:
+    """`key_of` for a sound file Kit can read: its first MAX_SECONDS, mixed to one channel."""
+    if not can_read(name):
+        return None
+    try:
+        with open_wav(file_path) as wav:
+            rate, channels = wav.rate, wav.channels
+            raw = wav.readframes(min(wav.frames, rate * MAX_SECONDS))
+            samples = _floats(raw, wav.width) if wav.is_float else _samples(raw, wav.width)
+    except _WAVE_ERRORS:
+        return None
+    if channels > 1:
+        samples = [sum(samples[i:i + channels]) / channels for i in range(0, len(samples) - channels + 1, channels)]
+    return key_of(samples, rate)
+
+
+def key_of(samples, rate: int) -> str | None:
+    """The key of a melodic loop, like "F# min", or None when there is no clear key.
+
+    1. Take slices of the loop and find the strength of every frequency in each
+       one (a Fourier transform).
+    2. Add up how much of each of the 12 notes is sounding, whatever the octave
+       (a "chroma" vector): every peak in the spectrum counts for the note
+       nearest its frequency.
+    3. Compare those 12 amounts with the profile of each of the 24 major and
+       minor keys (correlation), and take the key that fits best.
+
+    Drum loops spread their energy over every note, so no key fits well, and
+    they get None. A key and its relative (C major and A minor share their
+    notes) can be confused; the profiles favour the right one when the music
+    keeps returning to its home note.
+    """
+    if rate <= 0 or len(samples) < rate:
+        return None
+    step = max(1, rate // KEY_RATE)
+    low = [sum(samples[i:i + step]) / step for i in range(0, len(samples) - step + 1, step)]
+    rate //= step
+    if len(low) < KEY_WINDOW:
+        return None
+    starts = range(0, len(low) - KEY_WINDOW + 1, max(1, (len(low) - KEY_WINDOW) // (KEY_SLICES - 1) or 1))
+    window = [0.5 - 0.5 * math.cos(2 * math.pi * i / (KEY_WINDOW - 1)) for i in range(KEY_WINDOW)]
+    chroma = [0.0] * 12
+    bass = [0.0] * 12  # the same, for the low notes only: the bass usually sits on the home note
+    for number, start in enumerate(list(starts)[:KEY_SLICES]):
+        chunk = [x * w for x, w in zip(low[start:start + KEY_WINDOW], window)]
+        if max(map(abs, chunk)) < 1e-6:
+            continue  # silence
+        spectrum = [abs(c) for c in _fft(chunk)[:KEY_WINDOW // 2]]
+        first = int(KEY_LOWEST * KEY_WINDOW / rate)
+        last = min(len(spectrum) - 2, int(KEY_HIGHEST * KEY_WINDOW / rate))
+        top = max(spectrum[first:last + 1], default=0)
+        # Only peaks, and only those standing out: the notes being played, not the noise between them.
+        peaks = {k: spectrum[k] for k in range(max(1, first), last + 1)
+                 if spectrum[k] > 0.05 * top and spectrum[k] >= spectrum[k - 1] and spectrum[k] > spectrum[k + 1]}
+        for k, level in peaks.items():
+            hz = k * rate / KEY_WINDOW
+            note = round(69 + 12 * math.log2(hz / 440)) % 12
+            chroma[note] += level
+            if hz < KEY_BASS:
+                # Loops usually start at home, so the bass at the start counts more.
+                bass[note] += level * (3 if number < KEY_SLICES // 4 else 1)
+    if sum(chroma) == 0:
+        return None
+    # A key needs chords or a melody: at least three notes clearly sounding. A drum
+    # loop's tuned kick gives one or two strong notes and nothing else.
+    if sum(level >= 0.25 * max(chroma) for level in chroma) < 3:
+        return None
+    fits = []
+    for tonic in range(12):
+        for mode, profile in (("maj", MAJOR_PROFILE), ("min", MINOR_PROFILE)):
+            rotated = profile[-tonic:] + profile[:-tonic] if tonic else profile
+            fits.append((_correlation(chroma, rotated), f"{NOTE_NAMES[tonic]} {mode}"))
+    fits.sort(reverse=True)
+    best, key = fits[0]
+    if best < KEY_FIT:
+        return None  # no key fits well: drums, noise, or a sound that wanders between keys
+    # A key and its relative (C major, A minor) use the same seven notes, so they
+    # fit almost equally well; Am-F-C-G is also vi-IV-I-V in C. What tells them
+    # apart is the home note, and the bass plays it most. So between the two,
+    # take the one whose home note the bass plays more.
+    tonic, mode = NOTE_NAMES.index(key.split()[0]), key.split()[1]
+    other = (tonic + 9) % 12 if mode == "maj" else (tonic + 3) % 12
+    if bass[other] > 1.2 * bass[tonic]:
+        return f"{NOTE_NAMES[other]} {'min' if mode == 'maj' else 'maj'}"
+    return key
+
+
+KEY_FIT = 0.6   # the correlation a key must reach to be named
+KEY_BASS = 160  # Hz: below this counts as bass
+
+
+def _correlation(a: list[float], b: list[float]) -> float:
+    mean_a, mean_b = sum(a) / len(a), sum(b) / len(b)
+    da, db = [x - mean_a for x in a], [y - mean_b for y in b]
+    spread = math.sqrt(sum(x * x for x in da) * sum(y * y for y in db))
+    return sum(x * y for x, y in zip(da, db)) / spread if spread else 0.0
+
+
+def _fft(values: list[float]) -> list[complex]:
+    """A Fourier transform (iterative radix-2 Cooley-Tukey). len(values) must be a power of two."""
+    n = len(values)
+    out = [complex(v) for v in values]
+    j = 0
+    for i in range(1, n):  # put the values in bit-reversed order
+        bit = n >> 1
+        while j & bit:
+            j ^= bit
+            bit >>= 1
+        j |= bit
+        if i < j:
+            out[i], out[j] = out[j], out[i]
+    size = 2
+    while size <= n:
+        turn = cmath.exp(-2j * math.pi / size)
+        half = size // 2
+        twiddles = [turn ** k for k in range(half)]
+        for start in range(0, n, size):
+            for k in range(half):
+                a, b = out[start + k], out[start + k + half] * twiddles[k]
+                out[start + k], out[start + k + half] = a + b, a - b
+        size *= 2
+    return out

@@ -932,7 +932,7 @@ function waveBox(row, sound) {
   box.dataset.source = sound.source;
   box.load = () => {  // called once the row is near the screen
     drawWave(box, row, sound);
-    if (!sound.bpm) listen(row, sound);
+    if (!sound.bpm || !sound.key) listen(row, sound);
   };
   nearScreen.observe(box);
   return box;
@@ -951,16 +951,23 @@ async function listen(row, sound) {
   }
   if (!heard || !row.isConnected) return;  // nothing to go on, or the screen was redrawn meanwhile
   const info = row.querySelector(".heard");
-  if (heard.bpm) {
-    const shown = Math.round(heard.bpm);
-    info.append(` · ≈${shown} BPM`);
-    row.dataset.search += ` | ${shown} | ${shown}bpm`;
-  } else if (heard.note && !sound.key) {
-    info.append(` · ≈${heard.note}`);
-    row.dataset.search += ` | ${heard.note.toLowerCase()}`;
-  } else {
-    return;  // nothing clear to show
+  const shown = [];
+  if (heard.bpm && !sound.bpm) {
+    const bpm = Math.round(heard.bpm);
+    shown.push(`≈${bpm} BPM`);
+    row.dataset.search += ` | ${bpm} | ${bpm}bpm`;
   }
+  if (heard.key && !sound.key) {
+    // Searchable like a key from a file name: "f# min", "f#m" and "f# minor" all find it.
+    shown.push(`≈${heard.key}`);
+    row.dataset.key = heard.key.toLowerCase();
+    row.dataset.search += " | " + searchText({path: "", key: heard.key}).replace(/^ \| /, "");
+  } else if (heard.note && !sound.key) {
+    shown.push(`≈${heard.note}`);
+    row.dataset.search += ` | ${heard.note.toLowerCase()}`;
+  }
+  if (!shown.length) return;  // nothing clear to show
+  info.append(shown.map((part) => ` · ${part}`).join(""));
   const none = row.closest("section").querySelector(".none");
   if (none) filter(row.parentElement, none);  // it may match the search now
 }
@@ -972,7 +979,7 @@ async function drawWave(box, row, sound) {
   } catch (error) { /* leave it empty */ }
   if (!peaks && BROWSER_DECODES.test(sound.path) && sound.size <= DECODE_LIMIT) {
     // Kit cannot decode this format in Python, but the page can.
-    const decoded = await decodedPeaks(sound.source, !sound.bpm);
+    const decoded = await decodedPeaks(sound.source, !sound.bpm || !sound.key);
     if (decoded) {
       peaks = decoded.peaks;
       if (!sound.info && row.isConnected) row.querySelector(".length").textContent = ` · ${decoded.seconds.toFixed(2)} s`;

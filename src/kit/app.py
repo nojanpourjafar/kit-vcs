@@ -29,7 +29,7 @@ from urllib.parse import parse_qs, quote, urlparse
 
 from . import diagnostics, mp3, names, remote, tags, updates
 from .audio import describe
-from .audio import note, note_of, peaks, tempo, tempo_of
+from .audio import key, key_of, note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author, clean_name
 
@@ -86,6 +86,7 @@ class App:
         self._tempo: dict[str, float | None] = {}
         self._note: dict[str, str | None] = {}
         self._heard: dict[str, dict] = {}
+        self._key: dict[str, str | None] = {}
         self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
         self.update: str | None = None  # a newer version on GitHub, once the check has found one
         self.update_checked = False
@@ -322,14 +323,29 @@ class App:
             self._note[key] = note(path, name)
         return self._note[key]
 
-    def listen(self, query: dict) -> dict:
-        """What the audio says about a sound: a tempo for a loop, or a note for a one-shot.
+    def key(self, query: dict) -> str | None:
+        """The key of a melodic loop, from its audio (about half a second of work, so it is remembered)."""
+        path, name = self.locate(query)
+        stat = path.stat()
+        cache = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if cache not in self._key:
+            self._key[cache] = key(path, name)
+        return self._key[cache]
 
-        Only sounds with no beat are asked for a note. A melody loop has a
-        pitch at every moment, but its first note says nothing about its key.
+    def listen(self, query: dict) -> dict:
+        """What the audio says about a sound that its name does not: a tempo, a key, or a note.
+
+        A key needs at least three notes sounding (see audio.key_of), so loops
+        and chords get one and one-shots do not. A one-shot gets the note it
+        plays instead. Anything with a beat or a key never gets a note: a
+        melody has a pitch at every moment, but its first note says nothing.
         """
-        bpm = self.tempo(query)
-        return {"bpm": bpm, "note": None if bpm else self.note(query)}
+        _, name = self.locate(query)
+        named = tags.from_name(name)
+        bpm = None if named["bpm"] else self.tempo(query)
+        found_key = None if named["key"] else self.key(query)
+        busy = bpm or named["bpm"] or found_key or named["key"]
+        return {"bpm": bpm, "key": found_key, "note": None if busy else self.note(query)}
 
     def heard(self, query: dict, samples: array) -> dict:
         """`listen` for a sound the page decoded (MP3, AAC): it sends the samples.
@@ -341,16 +357,19 @@ class App:
         """
         path, name = self.locate(query)  # the sound must exist; its file is not read again
         stat = path.stat()
-        key = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
-        if key not in self._heard:
+        cache = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if cache not in self._heard:
             rate = int(query.get("rate", 0))
             if not 8000 <= rate <= 96000:
                 raise KitError("rate must be between 8000 and 96000")
             info = mp3.read(path) if name.lower().endswith(".mp3") else None
             seconds = info.seconds if info else float(query.get("seconds", 0))
-            bpm = tempo_of(samples, rate, seconds)
-            self._heard[key] = {"bpm": bpm, "note": None if bpm else note_of(list(samples), rate)}
-        return self._heard[key]
+            named = tags.from_name(name)  # the same rules as `listen`
+            bpm = None if named["bpm"] else tempo_of(samples, rate, seconds)
+            found_key = None if named["key"] else key_of(samples, rate)
+            busy = bpm or named["bpm"] or found_key or named["key"]
+            self._heard[cache] = {"bpm": bpm, "key": found_key, "note": None if busy else note_of(list(samples), rate)}
+        return self._heard[cache]
 
     # ---- actions ---------------------------------------------------------
 

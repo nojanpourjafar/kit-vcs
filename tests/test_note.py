@@ -82,7 +82,7 @@ def test_the_app_gives_a_note_only_to_sounds_without_a_beat(kit):
     an_808(kit / "Kicks" / "low.wav", 31)                             # G1
     drums(kit / "Kicks" / "groove.wav", 95)
     app = App(kit)
-    assert app.listen({"path": "Kicks/low.wav"}) == {"bpm": None, "note": "G"}
+    assert app.listen({"path": "Kicks/low.wav"}) == {"bpm": None, "key": None, "note": "G"}
     heard = app.listen({"path": "Kicks/groove.wav"})
     assert heard["bpm"] == pytest.approx(95, abs=1) and heard["note"] is None
 
@@ -103,4 +103,4 @@ def test_the_page_asks_one_address_for_both(app, kit):
     Repo.init(kit, author="Nojan")
     an_808(kit / "Kicks" / "low.wav", 31)
     status, body, _ = app("/api/tempo?path=Kicks/low.wav")
-    assert status == 200 and json.loads(body) == {"bpm": None, "note": "G"}
+    assert status == 200 and json.loads(body) == {"bpm": None, "key": None, "note": "G"}

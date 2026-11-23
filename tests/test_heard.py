@@ -60,7 +60,7 @@ def test_a_decoded_loop_gets_a_tempo_and_a_one_shot_a_note(app, kit, made):
     status, heard = post(app, "Loops/groove.m4a", samples_of(made / "groove.wav"), rate=RATE, seconds=2 * 4 * 60 / 128)
     assert status == 200 and heard["bpm"] == pytest.approx(128, abs=1) and heard["note"] is None
     status, heard = post(app, "Loops/808.ogg", samples_of(made / "808.wav"), rate=RATE, seconds=1.2)
-    assert status == 200 and heard == {"bpm": None, "note": "F#"}
+    assert status == 200 and heard == {"bpm": None, "key": None, "note": "F#"}
 
 
 def test_the_answer_is_kept_per_file(app, kit, made):
