@@ -23,6 +23,8 @@ The app is not signed yet, so the system warns the first time:
 
 When a newer version is out, Kit says so at the top of the window, with a button that opens this page. To update, download it and replace the old app; kits, history and settings are kept outside the app and carry over. To find out, Kit asks GitHub for the number of the latest release, at most once a day; nothing else is sent. Set `KIT_NO_UPDATE_CHECK=1` to turn this off.
 
+If something goes wrong, **Report a problem** at the bottom of the All kits screen shows a short report to copy into a message: the Kit version, the system, and the last errors Kit recorded (in `kit.log`, in the app's settings folder). Nothing is sent from Kit itself.
+
 ## Install
 
 Needs Python 3.10 or newer. No other dependencies.
@@ -230,6 +232,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
 | `src/kit/updates.py` | Asks GitHub whether a newer release is out |
+| `src/kit/diagnostics.py` | The error log and the "Report a problem" text |
 | `src/kit/report.py` | The `kit show` web page |
 | `src/kit/app.py` | The server behind `kit ui` and `kit app`: JSON endpoints over the same Repo methods |
 | `src/kit/ui.html` | The page: layout, styles and script in one file |

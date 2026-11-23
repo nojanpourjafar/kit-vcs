@@ -21,12 +21,13 @@ import secrets
 import subprocess
 import sys
 import threading
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import mp3, names, remote, tags, updates
+from . import diagnostics, mp3, names, remote, tags, updates
 from .audio import describe
 from .audio import note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
@@ -78,6 +79,7 @@ class App:
     def __init__(self, folder=None, dev: bool = False):
         self.folder: Path | None = None  # None means the home screen: no kit is open
         self.dev = dev  # development mode: the page reloads itself when ui.html is saved
+        self.window = "browser"  # or "own window": `kit app` sets it, for problem reports
         self.token = secrets.token_urlsafe(16)
         self.lock = threading.RLock()  # one action at a time
         self._peaks: dict[str, list[float] | None] = {}
@@ -388,6 +390,12 @@ class App:
         if action == "star":
             self.repo().star(body.get("path") or "", bool(body.get("on", True)))
             return {"message": ""}
+        if action == "report":
+            return {"text": diagnostics.report(config_dir(), self.window)}
+        if action == "log":
+            # An error inside the page itself (its script), sent here so it reaches the report.
+            diagnostics.record(config_dir(), "In the page: " + str(body.get("message", ""))[:2000])
+            return {"message": ""}
         if action == "download":
             webbrowser.open(updates.DOWNLOAD_PAGE)  # the user's own browser, even from the app window
             return {"message": ""}
@@ -520,6 +528,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": str(err)})
         except (ValueError, OSError) as err:
             self._json(400, {"error": f"{type(err).__name__}: {err}"})
+        except Exception:  # a bug: keep the details, and tell the person where to find them
+            diagnostics.record(config_dir(), f"{self.command} {self.path.split('?')[0]}\n{traceback.format_exc()}")
+            self._json(500, {"error": "Something went wrong inside Kit. The details are saved: "
+                                      "Report a problem, on the All kits screen, shows them to send."})
 
     # ---- routes ----------------------------------------------------------
 

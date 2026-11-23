@@ -13,9 +13,11 @@ from __future__ import annotations
 import argparse
 import sys
 import threading
+import traceback
 import webbrowser
 
-from .app import make_server
+from . import diagnostics
+from .app import config_dir, make_server
 from .repo import KitError
 
 
@@ -43,6 +45,17 @@ class Bridge:
 
     def drag_sound(self, path: str) -> bool:
         """Start dragging a sound out of the window. Returns False where that is not supported."""
+        try:
+            return self._drag(path)
+        except KitError:
+            raise
+        except Exception:
+            # Dragging talks to the system directly (AppKit, Windows Forms), the
+            # part of Kit most likely to break on a computer it was not tested on.
+            diagnostics.record(config_dir(), f"Dragging {path}\n{traceback.format_exc()}")
+            raise
+
+    def _drag(self, path: str) -> bool:
         file, _ = self._app.locate({"path": path})  # refuses .kit and paths outside the kit
         if sys.platform == "darwin":
             from . import dragout_mac
@@ -83,6 +96,7 @@ def run(folder=None, window: bool = True, open_browser: bool = True, dev: bool =
                 webbrowser.open(url)
             threading.Event().wait()  # sleep until Ctrl+C
         else:
+            app.window = "own window"
             bridge = Bridge(app)
             bridge._window = webview.create_window(
                 "Kit", url, js_api=bridge, width=1180, height=820, min_size=(760, 560))

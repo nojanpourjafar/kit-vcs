@@ -41,6 +41,10 @@ button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 button.before { padding: 3px 9px; font-size: 12px; color: var(--modified); border-color: var(--modified); }
 .sound.hearing-before button.before { background: var(--modified); color: var(--card); }
 .name-line { margin: 10px 0 0; font-size: 13px; }
+.report-link { text-align: center; margin: 4px 0 0; font-size: 13px; }
+.report textarea { width: 100%; min-height: 220px; box-sizing: border-box; margin: 10px 0; padding: 10px;
+  font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
 button.link { border: 0; padding: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; }
 .meter { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 14px 0 4px; }
 .meter div { height: 100%; background: var(--accent); transition: width .3s; }
@@ -271,7 +275,8 @@ function dragOut(row, sound) {
     const move = (event) => {
       if (Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < 5) return;
       stop();
-      window.pywebview.api.drag_sound(sound.path).catch((error) => toast(error.message, true));
+      window.pywebview.api.drag_sound(sound.path).catch((error) =>
+        toast(`Could not drag ${sound.path}: ${error.message || error}. Report a problem (All kits) has the details.`, true));
     };
     const stop = () => {
       removeEventListener("mousemove", move);
@@ -591,7 +596,8 @@ function renderHome() {
       act("open", {folder: path.value}, event.submitter);
     }}, path, h("button", {class: "primary"}, "Open folder")));
   }
-  $("#main").replaceChildren(box, sharedKitCard());
+  $("#main").replaceChildren(box, sharedKitCard(),
+    h("p", {class: "report-link"}, h("button", {class: "link", onclick: showReport}, "Report a problem")));
 }
 
 function render() {
@@ -1048,6 +1054,48 @@ function splitSection(sounds) {
 }
 
 $("#btn-home").addEventListener("click", (event) => act("close", {}, event.currentTarget));
+
+// ---- problems -------------------------------------------------------------------
+
+// "Report a problem" shows what Kit knows about the last problems: its version,
+// the system, and the end of its log. Nothing is sent: the person reads it and
+// copies it into a message. It can contain the paths of kit folders.
+async function showReport() {
+  let text;
+  try {
+    text = (await api("/api/report", {})).text;
+  } catch (error) {
+    return toast(error.message, true);
+  }
+  const box = h("textarea", {readonly: true, "aria-label": "Problem report"});
+  box.value = text;
+  const copy = h("button", {class: "primary", onclick: async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      box.select();  // some web views do not allow the clipboard from a page; copy the old way
+      document.execCommand("copy");
+    }
+    toast("Copied. Paste it into a message, with what you were doing when it went wrong.");
+  }}, "Copy");
+  $("#main").replaceChildren(h("section", {class: "card report"},
+    h("h1", {}, "Report a problem"),
+    h("p", {class: "muted"}, "Copy this and send it with what you were doing. Nothing is sent from Kit itself. " +
+      "It may include the folder paths of your kits."),
+    box, h("div", {class: "row"}, copy, h("button", {onclick: render}, "Back"))));
+}
+
+// Errors in this page's own script reach the log too, so a report includes
+// them. Only the first few are sent, in case one repeats in a loop.
+let pageErrors = 0;
+function logPageError(message) {
+  if (++pageErrors > 5) return;
+  api("/api/log", {message}).catch(() => {});  // the server is gone: nothing more can be done
+}
+window.addEventListener("error", (event) =>
+  logPageError(`${event.message} (${(event.filename || "").split("/").pop()}:${event.lineno})`));
+window.addEventListener("unhandledrejection", (event) =>
+  logPageError(`Unhandled: ${event.reason && event.reason.stack ? event.reason.stack : event.reason}`));
 
 // ---- a newer version ------------------------------------------------------------
 
