@@ -89,6 +89,9 @@ class App:
         self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
         self.update: str | None = None  # a newer version on GitHub, once the check has found one
         self.update_checked = False
+        self.auto_compact = False  # compress saved WAV files in the background; on in the real app
+        self.compacting = False
+        self.compacted: dict | None = None  # what the last background run saved, for the page
         if folder is not None:
             if not Path(folder).is_dir():
                 raise KitError(f"there is no folder at {folder}")
@@ -211,6 +214,8 @@ class App:
             "reveal": REVEAL_LABEL,
             "warnings": names.warnings(working),
             "conflicts": repo.conflicts(),
+            "compacting": self.compacting,
+            "compacted": self.compacted if self.compacted and self.compacted["folder"] == str(self.folder) else None,
             "sync": self._sync(repo),
         }
 
@@ -373,8 +378,40 @@ class App:
         self.open(repo.folder)
         return {"message": f"Got {name}: {result.commits} version(s)."}
 
+    # Actions after which there may be new WAV files in .kit to compress.
+    COMPACT_AFTER = {"open", "commit", "pull", "clone"}
+
     def act(self, action: str, body: dict) -> dict:
         """Run one action from the page and say what happened."""
+        result = self._act(action, body)
+        if action in self.COMPACT_AFTER:
+            self.compact_soon()
+        return result
+
+    def compact_soon(self) -> None:
+        """Start `kit compact` for the open kit on a background thread, unless one is running.
+
+        It encodes with no lock held, so saving, playing and syncing carry on
+        meanwhile; only the moment a packed copy replaces an original is locked.
+        """
+        if not self.auto_compact or self.compacting or self.folder is None or not (self.folder / DIR).is_dir():
+            return
+        repo = self.repo()
+        self.compacting = True
+
+        def work() -> None:
+            try:
+                files, before, after = repo.store.compact(lock=self.lock)
+                if files:
+                    self.compacted = {"folder": str(repo.folder), "files": files, "saved": before - after}
+            except Exception:  # never let a background job take the app down; keep the details
+                diagnostics.record(config_dir(), f"Compressing {repo.folder}\n{traceback.format_exc()}")
+            finally:
+                self.compacting = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _act(self, action: str, body: dict) -> dict:
         if action == "open":
             text = (body.get("folder") or "").strip()
             if not text:
@@ -645,6 +682,8 @@ def make_server(folder=None, port: int = 0, dev: bool = False) -> tuple[Threadin
 
 def serve(folder=".", port: int = 0, open_browser: bool = True, dev: bool = False) -> None:
     server, app = make_server(folder, port, dev=dev)
+    app.auto_compact = True
+    app.compact_soon()  # a kit saved before compression existed is compressed now
     if not dev:
         app.start_update_check()
     url = f"http://127.0.0.1:{server.server_address[1]}/"

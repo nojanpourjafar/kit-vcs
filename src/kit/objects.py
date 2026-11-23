@@ -19,6 +19,7 @@ file by hash and does not need to know which way it is kept.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import shutil
@@ -100,8 +101,10 @@ class ObjectStore:
 
     def read_bytes(self, digest: str) -> bytes:
         raw = self.path_for(digest)
-        if raw.is_file():
+        try:
             return raw.read_bytes()
+        except FileNotFoundError:
+            pass  # packed, perhaps just now by `compact` running in the background
         try:
             return pack.unpack(self.packed_path(digest).read_bytes())
         except (ValueError, IndexError, struct.error) as err:  # whatever a damaged FLAC stream trips over
@@ -118,13 +121,13 @@ class ObjectStore:
     def copy_to(self, digest: str, dest: Path) -> None:
         """Write a stored file back out to `dest` (used when restoring a version)."""
         src = self.path_for(digest)
-        if not src.is_file():
-            _write_atomically(dest, self.read_bytes(digest))
-            return
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_name(f".tmp-{uuid4().hex}")
         try:
-            shutil.copyfile(src, tmp)
+            try:
+                shutil.copyfile(src, tmp)
+            except FileNotFoundError:  # stored packed: unpack it instead
+                tmp.write_bytes(self.read_bytes(digest))
             os.replace(tmp, dest)
         finally:
             tmp.unlink(missing_ok=True)
@@ -141,7 +144,7 @@ class ObjectStore:
 
     # ---- compression -------------------------------------------------------
 
-    def compact(self, min_size: int = 64 * 1024, progress=None) -> tuple[int, int, int]:
+    def compact(self, min_size: int = 64 * 1024, progress=None, lock=None) -> tuple[int, int, int]:
         """Store WAV files as FLAC where that saves space. Returns (files, bytes before, bytes after).
 
         A file is packed only if unpacking gives back exactly its hash, and
@@ -149,20 +152,28 @@ class ObjectStore:
         so stopping halfway (or a crash) loses nothing. Files under `min_size`
         are left alone: the saving is too small to be worth unpacking them.
         `progress(done, total)` is called as it goes.
+
+        `lock`, if given, is held only while a packed copy replaces an original,
+        not while encoding (seconds per file), so the app can keep working while
+        this runs in the background.
         """
         candidates = [d for d in self.all_hashes() if self.path_for(d).is_file()
                       and self.path_for(d).stat().st_size >= min_size and _looks_like_wav(self.path_for(d))]
         files = before = after = 0
         for done, digest in enumerate(candidates, 1):
             raw = self.path_for(digest)
-            data = raw.read_bytes()
+            try:
+                data = raw.read_bytes()
+            except FileNotFoundError:
+                continue  # packed by another run meanwhile
             packed = pack.pack(data)
             if packed is not None and len(packed) < 0.9 * len(data) and hash_bytes(pack.unpack(packed)) == digest:
-                _write_atomically(self.packed_path(digest), packed)
-                try:
-                    raw.unlink()
-                except OSError:
-                    pass  # open in another program (Windows): both copies stay; the next run removes it
+                with lock or contextlib.nullcontext():
+                    _write_atomically(self.packed_path(digest), packed)
+                    try:
+                        raw.unlink()
+                    except OSError:
+                        pass  # open in another program (Windows): both copies stay; the next run removes it
                 files, before, after = files + 1, before + len(data), after + len(packed)
             if progress:
                 progress(done, len(candidates))

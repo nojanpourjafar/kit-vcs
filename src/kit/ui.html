@@ -59,6 +59,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--accent); fon
 h2 { margin: 0 0 10px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 ul, ol { list-style: none; margin: 0; padding: 0; }
 .muted { color: var(--muted); margin: 4px 0 0; }
+.small { font-size: 13px; margin-top: 10px; }
 .top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: 10px 20px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); }
 .brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; }
@@ -464,6 +465,14 @@ function renderNow() {
       box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
     }
   }
+  // Saved WAV files are compressed in the background after saving or pulling.
+  if (state.compacting) {
+    const line = h("p", {class: "muted small"}, "Compressing saved sounds in the background. Your folder is not touched.");
+    box.append(line);
+    watchCompaction(line);
+  } else if (state.compacted) {
+    box.append(h("p", {class: "muted small"}, compactedText(state.compacted)));
+  }
   if (state.warnings.length) {
     box.append(h("div", {class: "warn"},
       h("strong", {}, "These names will not work for someone on Windows. Rename them before sharing:"),
@@ -473,6 +482,25 @@ function renderNow() {
     removedSection(latest ? `Removed since ${latest.label}` : "Removed", state.removed)];
   parts.push(splitSection(state.sounds));
   $("#main").replaceChildren(...parts.filter(Boolean));
+}
+
+const compactedText = (done) => `Saved sounds compressed: ${plural(done.files, "file")}, ${size(done.saved)} smaller on disk.`;
+
+// Check every two seconds whether the background compression has finished,
+// and then change only this line: redrawing the screen would interrupt a
+// sound that is playing.
+async function watchCompaction(line) {
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  if (!line.isConnected) return;  // the screen changed; the next one shows its own line
+  let fresh;
+  try {
+    fresh = await api("/api/state");
+  } catch (error) {
+    return;
+  }
+  if (!line.isConnected) return;
+  if (fresh.compacting) return watchCompaction(line);
+  if (fresh.compacted) line.textContent = compactedText(fresh.compacted); else line.remove();
 }
 
 // Give a version a name ("1.0", "Sold on BeatStars"). The button opens into a box.

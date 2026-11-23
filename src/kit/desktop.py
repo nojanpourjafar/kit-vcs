@@ -81,6 +81,8 @@ def _load_webview():
 def run(folder=None, window: bool = True, open_browser: bool = True, dev: bool = False) -> None:
     """Start the server and show the page, in a window if possible."""
     server, app = make_server(folder, dev=dev)
+    app.auto_compact = True  # compress saved WAV files in the background
+    app.compact_soon()
     if not dev:  # while working on the app, there is no point asking
         app.start_update_check()
     url = f"http://127.0.0.1:{server.server_address[1]}/"
