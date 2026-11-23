@@ -228,6 +228,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
 | `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
+| `src/kit/flacenc.py` | Encodes FLAC files (fixed predictors, Rice codes, stereo decorrelation) |
 | `src/kit/mp3.py` | Length and format of MP3 files, from their frame headers |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
@@ -269,7 +270,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |
-| Storing large audio compressed (FLAC) | planned |
+| Storing large audio compressed (FLAC) | in progress: the encoder is done (bit-exact, checked against ffmpeg) |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.
 
