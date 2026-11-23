@@ -117,7 +117,26 @@ def tempo(file_path: Path, name: str) -> float | None:
                 energy.append(sum(x * x for x in samples) / max(1, len(samples)))
     except _WAVE_ERRORS:
         return None
-    per_second = rate / hop
+    return _tempo_from_energy(energy, rate / hop, seconds)
+
+
+def tempo_of(samples, rate: int, seconds: float) -> float | None:
+    """`tempo` for sound that is already decoded: mono samples from -1 to 1.
+
+    Used for formats Python does not decode (MP3, AAC), which the page decodes
+    and sends. `seconds` is the length of the whole sound, which may be longer
+    than the samples sent (only the first MAX_SECONDS are needed).
+    """
+    if seconds < 1 or rate <= 0:
+        return None
+    hop = max(1, round(rate / 172))
+    end = min(len(samples), rate * MAX_SECONDS)
+    energy = [sum(x * x for x in samples[i:i + hop]) / hop for i in range(0, end - hop + 1, hop)]
+    return _tempo_from_energy(energy, rate / hop, seconds)
+
+
+def _tempo_from_energy(energy: list[float], per_second: float, seconds: float) -> float | None:
+    """Steps 2 to 4 of `tempo`, from the energy of each slice."""
     if _hits(energy, per_second) < 4:
         return None  # a one-shot (an 808, a kick) has one hit, and one hit is not a beat
     onsets = _onsets(energy)
@@ -251,9 +270,12 @@ def note(file_path: Path, name: str) -> str | None:
         return None
     if channels > 1:  # mix to mono
         samples = [sum(samples[i:i + channels]) / channels for i in range(0, len(samples) - channels + 1, channels)]
-    else:
-        samples = list(samples)
+    return note_of(list(samples), rate)
 
+
+def note_of(samples: list[float], rate: int) -> str | None:
+    """`note` for sound that is already decoded: mono samples, any scale."""
+    samples = samples[:int(rate * 1.5)]
     # Work at about 11 kHz: plenty for notes up to 1 kHz, and four times less work.
     step = max(1, rate // 11025)
     if step > 1:

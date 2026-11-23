@@ -240,7 +240,9 @@ function soundRow(sound, live) {
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
-    h("div", {class: "info"}, info.join(" · "))));
+    // Two empty spans keep what arrives later in a fixed order: the length of
+    // a sound the page decoded, then the tempo or note heard in it.
+    h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"}))));
   row.append(waveBox(row, sound));
   if (live) {
     row.dataset.starred = sound.starred ? "1" : "";
@@ -855,12 +857,12 @@ function waveBox(row, sound) {
 async function listen(row, sound) {
   let heard = null;
   try {
-    heard = await api(`/api/tempo?${sound.source}`);
+    heard = BROWSER_DECODES.test(sound.path) ? await heardByPage(sound) : await api(`/api/tempo?${sound.source}`);
   } catch (error) {
     return;
   }
-  if (!row.isConnected) return;  // the screen was redrawn meanwhile
-  const info = row.querySelector(".info");
+  if (!heard || !row.isConnected) return;  // nothing to go on, or the screen was redrawn meanwhile
+  const info = row.querySelector(".heard");
   if (heard.bpm) {
     const shown = Math.round(heard.bpm);
     info.append(` · ≈${shown} BPM`);
@@ -882,10 +884,10 @@ async function drawWave(box, row, sound) {
   } catch (error) { /* leave it empty */ }
   if (!peaks && BROWSER_DECODES.test(sound.path) && sound.size <= DECODE_LIMIT) {
     // Kit cannot decode this format in Python, but the page can.
-    const decoded = await decodedPeaks(sound.source);
+    const decoded = await decodedPeaks(sound.source, !sound.bpm);
     if (decoded) {
       peaks = decoded.peaks;
-      if (!sound.info && row.isConnected) row.querySelector(".info").append(` · ${decoded.seconds.toFixed(2)} s`);
+      if (!sound.info && row.isConnected) row.querySelector(".length").textContent = ` · ${decoded.seconds.toFixed(2)} s`;
     }
   }
   if (!peaks || !peaks.length) {
@@ -920,7 +922,7 @@ const DECODE_LIMIT = 30 * 1024 * 1024;
 const decodedCache = new Map();  // source -> promise of {peaks, seconds}, so a redraw does not decode again
 let decoder = null;
 
-function decodedPeaks(source, buckets = 96) {
+function decodedPeaks(source, withSamples = false, buckets = 96) {
   if (!decodedCache.has(source)) decodedCache.set(source, (async () => {
     try {
       const response = await fetch(`/api/audio?${source}&t=${TOKEN}`);
@@ -940,12 +942,58 @@ function decodedPeaks(source, buckets = 96) {
         levels.push(loudest);
       }
       const top = Math.max(0, ...levels);
-      return {peaks: levels.map((level) => (top > 0 ? level / top : 0)), seconds: audio.duration};
+      return {peaks: levels.map((level) => (top > 0 ? level / top : 0)), seconds: audio.duration,
+        mono: withSamples ? await monoSamples(audio) : null};
     } catch (error) {
       return null;  // a format this web view cannot decode, or a damaged file
     }
   })());
   return decodedCache.get(source);
+}
+
+// The first 30 seconds as one channel at 22050 samples a second: what Python
+// needs to find a tempo or a note, at an eighth of the size of the decoded
+// stereo sound. An OfflineAudioContext at that rate mixes the channels and
+// converts the rate properly (filtering out what is too high to keep).
+async function monoSamples(audio) {
+  const seconds = Math.min(audio.duration, 30);
+  try {
+    const context = new OfflineAudioContext(1, Math.max(1, Math.ceil(seconds * 22050)), 22050);
+    const source = context.createBufferSource();
+    source.buffer = audio;
+    source.connect(context.destination);
+    source.start();
+    return {rate: 22050, samples: (await context.startRendering()).getChannelData(0)};
+  } catch (error) {
+    // A web view that cannot render at 22050: mix the channels here and keep the rate.
+    const length = Math.min(audio.length, Math.ceil(seconds * audio.sampleRate));
+    const samples = new Float32Array(length);
+    for (let c = 0; c < audio.numberOfChannels; c++) {
+      const data = audio.getChannelData(c);
+      for (let i = 0; i < length; i++) samples[i] += data[i] / audio.numberOfChannels;
+    }
+    return {rate: audio.sampleRate, samples};
+  }
+}
+
+// Tempo and note for a sound the page decoded: the samples go to Python, which
+// runs the same detection as for a WAV file. They are sent as raw 32-bit
+// floats, since as JSON they would be several times bigger. Asked once per
+// sound; after that, the answer is kept here and the samples are let go.
+const heardCache = new Map();
+
+function heardByPage(sound) {
+  if (!heardCache.has(sound.source)) heardCache.set(sound.source, (async () => {
+    if (sound.size > DECODE_LIMIT) return null;
+    const decoded = await decodedPeaks(sound.source, true);
+    if (!decoded || !decoded.mono) return null;
+    const {rate, samples} = decoded.mono;
+    decoded.mono = null;  // only the waveform stays in memory
+    const response = await fetch(`/api/heard?${sound.source}&rate=${rate}&seconds=${decoded.seconds}`, {
+      method: "POST", headers: {"X-Kit-Token": TOKEN, "Content-Type": "application/octet-stream"}, body: samples});
+    return response.ok ? response.json() : null;
+  })());
+  return heardCache.get(sound.source);
 }
 
 // Clicking a waveform starts that sound and jumps to the clicked position.

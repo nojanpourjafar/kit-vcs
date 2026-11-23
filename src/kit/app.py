@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+from array import array
 import os
 import secrets
 import subprocess
@@ -25,14 +26,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import names, remote, tags, updates
+from . import mp3, names, remote, tags, updates
 from .audio import describe
-from .audio import note, peaks, tempo
+from .audio import note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
 from .repo import DIR, KitError, Repo, _default_author, clean_name
 
 PAGE = Path(__file__).with_name("ui.html")
 MAX_RECENT = 12
+HEARD_LIMIT = 30 * 48000 * 4  # 30 seconds of 32-bit samples, at up to 48 kHz
 
 
 def config_dir() -> Path:
@@ -81,6 +83,7 @@ class App:
         self._peaks: dict[str, list[float] | None] = {}
         self._tempo: dict[str, float | None] = {}
         self._note: dict[str, str | None] = {}
+        self._heard: dict[str, dict] = {}
         self.progress = {"files": 0, "files_total": 0, "bytes": 0, "bytes_total": 0}
         self.update: str | None = None  # a newer version on GitHub, once the check has found one
         self.update_checked = False
@@ -316,6 +319,27 @@ class App:
         bpm = self.tempo(query)
         return {"bpm": bpm, "note": None if bpm else self.note(query)}
 
+    def heard(self, query: dict, samples: array) -> dict:
+        """`listen` for a sound the page decoded (MP3, AAC): it sends the samples.
+
+        They come mono, at `rate` samples a second (the page sends 22050).
+        `seconds` is the whole sound's length as the page measured it; for an
+        MP3 the length from its headers is used instead, as it is exact, and
+        the tempo search depends on it.
+        """
+        path, name = self.locate(query)  # the sound must exist; its file is not read again
+        stat = path.stat()
+        key = f"{path}:{stat.st_size}:{stat.st_mtime_ns}"
+        if key not in self._heard:
+            rate = int(query.get("rate", 0))
+            if not 8000 <= rate <= 96000:
+                raise KitError("rate must be between 8000 and 96000")
+            info = mp3.read(path) if name.lower().endswith(".mp3") else None
+            seconds = info.seconds if info else float(query.get("seconds", 0))
+            bpm = tempo_of(samples, rate, seconds)
+            self._heard[key] = {"bpm": bpm, "note": None if bpm else note_of(list(samples), rate)}
+        return self._heard[key]
+
     # ---- actions ---------------------------------------------------------
 
     def _sync(self, repo: Repo) -> dict | None:
@@ -541,12 +565,28 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if not self._allowed({}) or not url.path.startswith("/api/"):
             return self._json(403, {"error": "forbidden"})
+        if url.path == "/api/heard":
+            return self._heard(url)
         try:
             length = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(400, {"error": "bad request"})
         self._run(lambda: self.app.act(url.path[len("/api/"):], body))
+
+    def _heard(self, url) -> None:
+        """Decoded samples from the page: 32-bit floats, raw, not JSON (a few MB as JSON)."""
+        query = {key: values[0] for key, values in parse_qs(url.query).items()}
+        length = int(self.headers.get("Content-Length") or 0)
+        if not 0 < length <= HEARD_LIMIT:
+            return self._json(400, {"error": "send between 1 byte and 30 seconds of samples"})
+        raw = self.rfile.read(length)
+        samples = array("f")
+        samples.frombytes(raw[:len(raw) // 4 * 4])
+        if sys.byteorder == "big":
+            samples.byteswap()  # the page sends little-endian, like every computer Kit runs on
+        # No lock, like /api/tempo: this is read-only and must not hold up saving.
+        self._run(lambda: self.app.heard(query, samples), lock=False)
 
     def _audio(self, query: dict) -> None:
         """Send a sound. Safari will not play audio unless byte ranges are supported."""

@@ -33,6 +33,7 @@ def app(kit):
     call.json = lambda path, body=None: json.loads(call(path, body)[1])
     call.token = state.token
     call.app = state  # the App behind the server
+    call.base = base
     yield call
     server.shutdown()
     server.server_close()
