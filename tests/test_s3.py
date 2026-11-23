@@ -53,3 +53,21 @@ def test_two_kits_can_share_one_bucket(kit, tmp_path, bucket):
     remote.push(mine, S3Remote(bucket, "one"))
     assert S3Remote(bucket, "two").read_head() is None
     assert S3Remote(bucket).read_head() is None
+
+
+def test_packed_files_go_through_a_bucket(tmp_path, bucket):
+    from test_compact import wav
+
+    folder = tmp_path / "mine"
+    folder.mkdir()
+    (folder / "loop.wav").write_bytes(wav())
+    mine = Repo.init(folder, author="Nojan")
+    mine.commit("a loop")
+    mine.store.compact()
+    remote.push(mine, S3Remote(bucket, "packed"))
+    keys = [o["Key"] for o in boto3.client("s3").list_objects_v2(Bucket=bucket)["Contents"]]
+    assert sum(key.endswith(".kz") for key in keys) == 1
+
+    friend, _ = remote.clone(f"s3://{bucket}/packed", tmp_path / "friend")
+    assert (tmp_path / "friend" / "loop.wav").read_bytes() == wav()
+    assert friend.verify() == []

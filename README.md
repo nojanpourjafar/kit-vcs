@@ -189,6 +189,8 @@ MyKit/
 **WAV files can be stored compressed.**
 `kit compact` stores saved WAV files as FLAC (the app does this by itself, in the background, after saving, pulling, getting a kit or opening one), which holds exactly the same samples in about half the space. A file is still named by the hash of the original WAV, since versions and credits depend on that hash, so the packed copy has to turn back into the original byte for byte, header included. It keeps the bytes before and after the samples (the format, and chunks such as a DAW's loop points) as they are, with the samples as FLAC in between (`objects/ab/cdef....kz`). A file is packed only after unpacking it gave back the original hash, and the original is removed only after the packed copy is written. Anything that reads stored files asks the store for one by hash and gets the original back; to play or export an old version, a packed file is unpacked once into `.kit/cache`. Float and 32-bit WAV files, other formats, files under 64 KB and files that would not shrink by at least 10% are left as they are. The encoder (`flacenc.py`) uses FLAC's fixed predictors, Rice codes chosen per part of each block, and left/side, right/side or mid/side stereo; it leaves out FLAC's other predictor (LPC), so its files are a few percent bigger than those of the `flac` tool, and in Python it takes roughly a fifth to a half of a sound's own length to encode it.
 
+Compressed files also travel compressed: a push sends the packed file instead of the WAV, about half the upload, and a pull keeps it packed after checking that it unpacks to its hash. A damaged or wrong file is refused before it reaches the kit. Plain and packed files can sit side by side in one shared folder, so kits pushed before this work as they are. Kit 0.14 and older only know plain files, so everyone sharing a kit needs Kit 0.15 or newer.
+
 **Sync sends only what is missing.**
 `push` walks the history back from `HEAD` until it reaches a version the remote already has, then uploads those versions oldest first. For each one it uploads only the objects the remote lacks, then the commit, and moves the remote's `HEAD` last. An interrupted push can leave extra objects on the remote but never a version with pieces missing. `pull` does the same in the other direction and re-hashes every download, so a corrupted file is rejected.
 
@@ -275,7 +277,8 @@ The merge compares both sides with the last version they share. A file changed o
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |
-| Storing WAV files compressed, as FLAC (`kit compact`, and automatically in the app) | done; shared folders still hold plain WAV |
+| Storing WAV files compressed, as FLAC (`kit compact`, and automatically in the app) | done |
+| Sending them compressed through push and pull | done; everyone sharing a kit needs Kit 0.15 or newer |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.
 

@@ -110,6 +110,25 @@ class ObjectStore:
         except (ValueError, IndexError, struct.error) as err:  # whatever a damaged FLAC stream trips over
             raise OSError(f"stored file {digest[:8]} is damaged: {err}") from err
 
+    def packed_bytes(self, digest: str) -> bytes | None:
+        """The packed form of a stored file, as kept here, or None if it is kept plain."""
+        try:
+            return self.packed_path(digest).read_bytes()
+        except FileNotFoundError:
+            return None
+
+    def put_packed(self, digest: str, blob: bytes) -> None:
+        """Keep a packed file that arrived from elsewhere, after checking it unpacks to `digest`."""
+        if self.has(digest):
+            return
+        try:
+            original = pack.unpack(blob)
+        except (ValueError, IndexError, struct.error) as err:
+            raise ValueError(f"a packed file for {digest[:8]} cannot be unpacked: {err}") from err
+        if hash_bytes(original) != digest:
+            raise ValueError(f"a packed file did not unpack to its hash ({digest[:8]})")
+        _write_atomically(self.packed_path(digest), blob)
+
     def intact(self, digest: str) -> bool:
         """Whether the stored file still hashes to its name (`kit verify`)."""
         try:

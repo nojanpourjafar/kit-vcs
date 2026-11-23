@@ -63,10 +63,10 @@ class S3Remote:
                 return None
             raise
 
-    # ---- the ten remote methods ----------------------------------------
+    # ---- the remote methods --------------------------------------------
 
     def has_object(self, digest: str) -> bool:
-        return self._exists(self._object_key(digest))
+        return self._exists(self._object_key(digest)) or self._exists(self._object_key(digest) + ".kz")
 
     def upload_object(self, digest: str, src: Path) -> None:
         if hash_file(src) != digest:
@@ -75,6 +75,12 @@ class S3Remote:
 
     def download_object(self, digest: str, dest: Path) -> None:
         self.client.download_file(self.bucket, self._object_key(digest), str(dest))
+
+    def upload_packed(self, digest: str, blob: bytes) -> None:
+        self.client.put_object(Bucket=self.bucket, Key=self._object_key(digest) + ".kz", Body=blob)
+
+    def download_packed(self, digest: str) -> bytes | None:
+        return self._read(self._object_key(digest) + ".kz")
 
     def has_commit(self, commit_id: str) -> bool:
         return is_digest(commit_id) and self._exists(self._commit_key(commit_id))

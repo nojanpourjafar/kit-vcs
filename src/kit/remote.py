@@ -8,8 +8,13 @@ A remote is anywhere a copy of the history can live. Two kinds exist:
   * `S3Remote` (in s3remote.py) is a bucket on Amazon S3, Cloudflare R2 or
     anything else that speaks the S3 API.
 
-Both offer the same eight methods, listed in `Remote`, so push and pull are
-written once and work with either.
+Both offer the same methods, listed in `Remote`, so push and pull are written
+once and work with either.
+
+WAV files that are stored compressed (see pack.py) travel compressed too: a
+push sends the packed file, about half the size, and a pull checks that it
+unpacks to the right hash before keeping it. Everyone sharing a kit then needs
+Kit 0.15 or newer, since older versions only know plain files.
 """
 
 from __future__ import annotations
@@ -29,7 +34,7 @@ from .repo import KitError, Repo
 
 
 class Remote(Protocol):
-    """The ten things any remote must be able to do."""
+    """The twelve things any remote must be able to do."""
 
     def has_object(self, digest: str) -> bool: ...
     def upload_object(self, digest: str, src: Path) -> None: ...
@@ -41,6 +46,8 @@ class Remote(Protocol):
     def write_head(self, commit_id: str) -> None: ...
     def read_names(self) -> dict[str, str]: ...
     def write_names(self, names: dict[str, str]) -> None: ...
+    def upload_packed(self, digest: str, blob: bytes) -> None: ...
+    def download_packed(self, digest: str) -> bytes | None: ...
 
 
 class FolderRemote:
@@ -60,6 +67,12 @@ class FolderRemote:
 
     def download_object(self, digest: str, dest: Path) -> None:
         self.store.copy_to(digest, dest)
+
+    def upload_packed(self, digest: str, blob: bytes) -> None:
+        self.store.put_packed(digest, blob)
+
+    def download_packed(self, digest: str) -> bytes | None:
+        return self.store.packed_bytes(digest)
 
     def has_commit(self, commit_id: str) -> bool:
         return is_digest(commit_id) and (self.commits_dir / f"{commit_id}.json").is_file()
@@ -288,7 +301,11 @@ def push(repo: Repo, remote: Remote) -> SyncResult:
         needed = [commit.manifest, *(entry["hash"] for entry in manifest.values())]
         for digest in dict.fromkeys(needed):  # each hash once, order kept
             if not remote.has_object(digest):
-                remote.upload_object(digest, repo.store.file_for(digest))
+                packed = repo.store.packed_bytes(digest)
+                if packed is not None:
+                    remote.upload_packed(digest, packed)  # half the upload, and the same file
+                else:
+                    remote.upload_object(digest, repo.store.file_for(digest))
                 objects += 1
         # A commit is written only after everything it points to. If the
         # upload dies halfway, the remote holds some extra objects but never a
@@ -333,6 +350,14 @@ def pull(repo: Repo, remote: Remote) -> SyncResult:
         def fetch(digest: str) -> None:
             nonlocal objects
             if repo.store.has(digest):
+                return
+            packed = remote.download_packed(digest)
+            if packed is not None:
+                try:
+                    repo.store.put_packed(digest, packed)  # checked: it must unpack to its hash
+                except ValueError as err:
+                    raise KitError(f"a downloaded file did not match its hash ({digest[:8]}): {err}") from None
+                objects += 1
                 return
             remote.download_object(digest, scratch)
             # put_file hashes what arrived, so a corrupted or tampered
