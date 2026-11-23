@@ -158,7 +158,7 @@ def cmd_diff(args) -> None:
         print("Those two versions hold the same files.")
         return
     newer = repo.manifest_of(repo.resolve(args.new))
-    _print_changes(changes, locate=lambda path: repo.store.path_for(newer[path]["hash"]))
+    _print_changes(changes, locate=lambda path: repo.store.file_for(newer[path]["hash"]))
     print(_summary(changes) + ".")
 
 
@@ -323,6 +323,22 @@ def cmd_verify(args) -> None:
     raise KitError(f"{len(problems)} problem(s) found")
 
 
+def cmd_compact(args) -> None:
+    repo = Repo.find()
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rCompressing: {done}/{total} files", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    files, before, after = repo.store.compact(progress=progress)
+    if not files:
+        print("Nothing to compress: no stored WAV files that would get smaller.")
+        return
+    print(f"Compressed {files} WAV file(s) in .kit: {_size(before)} -> {_size(after)} "
+          f"(saved {_size(before - after)}, {1 - after / before:.0%}).")
+    print("Your sounds in the folder are not touched. Run `kit verify` to check every stored file.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kit", description="Version control for sample packs and loop kits.")
@@ -419,6 +435,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="check that nothing stored is damaged or missing")
     p.set_defaults(run=cmd_verify)
+
+    p = sub.add_parser("compact", help="store saved WAV files as FLAC, about half the space")
+    p.set_defaults(run=cmd_compact)
 
     return parser
 

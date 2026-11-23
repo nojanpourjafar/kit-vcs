@@ -7,6 +7,14 @@ What it buys us:
   * the same kick in ten versions of a kit takes the space of one kick;
   * renaming or moving a sample stores nothing new;
   * anyone can check a file is intact by hashing it again.
+
+WAV files can also be stored compressed, as FLAC (`kit compact`):
+
+    objects/ab/cdef0123....kz   <- the same file, packed (see pack.py)
+
+A packed file is still named by the hash of the original, and reading it
+gives back the original bytes. Everything else in Kit asks the store for a
+file by hash and does not need to know which way it is kept.
 """
 
 from __future__ import annotations
@@ -14,10 +22,12 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import struct
 from pathlib import Path
 from typing import Iterator
 from uuid import uuid4
 
+from . import pack
 from .hashing import CHUNK, hash_bytes, hash_file, is_digest
 
 
@@ -32,8 +42,25 @@ class ObjectStore:
             raise ValueError(f"not a SHA-256 hash: {digest!r}")
         return self.root / digest[:2] / digest[2:]
 
+    def packed_path(self, digest: str) -> Path:
+        path = self.path_for(digest)
+        return path.with_name(path.name + ".kz")
+
     def has(self, digest: str) -> bool:
-        return self.path_for(digest).is_file()
+        return self.path_for(digest).is_file() or self.packed_path(digest).is_file()
+
+    def file_for(self, digest: str) -> Path:
+        """A path to the stored file as it was saved, for anything that reads files.
+
+        A packed file is unpacked once into .kit/cache and read from there.
+        """
+        raw = self.path_for(digest)
+        if raw.is_file():
+            return raw
+        cached = self.root.parent / "cache" / digest
+        if not cached.is_file():
+            _write_atomically(cached, self.read_bytes(digest))
+        return cached
 
     def put_file(self, src: Path) -> str:
         """Save a file and return its hash. Does nothing if we already have it."""
@@ -72,11 +99,28 @@ class ObjectStore:
         return digest
 
     def read_bytes(self, digest: str) -> bytes:
-        return self.path_for(digest).read_bytes()
+        raw = self.path_for(digest)
+        if raw.is_file():
+            return raw.read_bytes()
+        try:
+            return pack.unpack(self.packed_path(digest).read_bytes())
+        except (ValueError, IndexError, struct.error) as err:  # whatever a damaged FLAC stream trips over
+            raise OSError(f"stored file {digest[:8]} is damaged: {err}") from err
+
+    def intact(self, digest: str) -> bool:
+        """Whether the stored file still hashes to its name (`kit verify`)."""
+        try:
+            raw = self.path_for(digest)
+            return (hash_file(raw) if raw.is_file() else hash_bytes(self.read_bytes(digest))) == digest
+        except (OSError, ValueError):
+            return False
 
     def copy_to(self, digest: str, dest: Path) -> None:
         """Write a stored file back out to `dest` (used when restoring a version)."""
         src = self.path_for(digest)
+        if not src.is_file():
+            _write_atomically(dest, self.read_bytes(digest))
+            return
         dest.parent.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_name(f".tmp-{uuid4().hex}")
         try:
@@ -90,6 +134,53 @@ class ObjectStore:
             return
         for folder in sorted(self.root.iterdir()):
             if folder.is_dir():
-                for item in sorted(folder.iterdir()):
-                    if is_digest(folder.name + item.name):
-                        yield folder.name + item.name
+                names = {item.name.removesuffix(".kz") for item in folder.iterdir()}
+                for name in sorted(names):
+                    if is_digest(folder.name + name):
+                        yield folder.name + name
+
+    # ---- compression -------------------------------------------------------
+
+    def compact(self, min_size: int = 64 * 1024, progress=None) -> tuple[int, int, int]:
+        """Store WAV files as FLAC where that saves space. Returns (files, bytes before, bytes after).
+
+        A file is packed only if unpacking gives back exactly its hash, and
+        the original is removed only after the packed copy is safely written,
+        so stopping halfway (or a crash) loses nothing. Files under `min_size`
+        are left alone: the saving is too small to be worth unpacking them.
+        `progress(done, total)` is called as it goes.
+        """
+        candidates = [d for d in self.all_hashes() if self.path_for(d).is_file()
+                      and self.path_for(d).stat().st_size >= min_size and _looks_like_wav(self.path_for(d))]
+        files = before = after = 0
+        for done, digest in enumerate(candidates, 1):
+            raw = self.path_for(digest)
+            data = raw.read_bytes()
+            packed = pack.pack(data)
+            if packed is not None and len(packed) < 0.9 * len(data) and hash_bytes(pack.unpack(packed)) == digest:
+                _write_atomically(self.packed_path(digest), packed)
+                try:
+                    raw.unlink()
+                except OSError:
+                    pass  # open in another program (Windows): both copies stay; the next run removes it
+                files, before, after = files + 1, before + len(data), after + len(packed)
+            if progress:
+                progress(done, len(candidates))
+        shutil.rmtree(self.root.parent / "cache", ignore_errors=True)  # unpacked copies, made again when needed
+        return files, before, after
+
+
+def _looks_like_wav(path: Path) -> bool:
+    with path.open("rb") as f:
+        head = f.read(12)
+    return head[:4] == b"RIFF" and head[8:12] == b"WAVE"
+
+
+def _write_atomically(dest: Path, data: bytes) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(f".tmp-{uuid4().hex}")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, dest)
+    finally:
+        tmp.unlink(missing_ok=True)

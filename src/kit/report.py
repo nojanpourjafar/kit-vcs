@@ -75,7 +75,7 @@ def build_report(repo: Repo, ref: str | None = None) -> str:
 
     rows, embedded = [], 0
     for path, entry in sorted(manifest.items()):
-        stored = repo.store.path_for(entry["hash"])
+        stored = repo.store.file_for(entry["hash"])
         change = changed.get(path)
         badge = f'<span class="badge {change.kind}">{change.kind}</span>' if change else ""
         details = [f"added by {escape(credits[path].author)}"]

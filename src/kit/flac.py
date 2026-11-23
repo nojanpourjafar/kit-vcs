@@ -95,8 +95,8 @@ class Flac:
 
     is_float = False
 
-    def __init__(self, path: Path):
-        self.data = Path(path).read_bytes()
+    def __init__(self, path: Path | None = None, data: bytes | None = None):
+        self.data = data if data is not None else Path(path).read_bytes()
         start = id3_length(self.data)
         if self.data[start:start + 4] != b"fLaC":
             raise FlacError("not a FLAC file")

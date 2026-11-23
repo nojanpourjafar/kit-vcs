@@ -157,6 +157,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit resolve <path> --keep mine\|theirs\|both` | Settle a sound both sides changed |
 | `kit clone <where> [folder]` | Make a new kit folder from a remote |
 | `kit verify` | Check that nothing stored is damaged or missing |
+| `kit compact` | Store saved WAV files as FLAC inside `.kit`, in about half the space |
 
 Versions can be named as `v1`, `v2`, ..., as `latest`, by a name given with `kit name` ("1.0", "Sold on BeatStars"), or by the start of their ID. `where` is a folder path or `s3://bucket/prefix`.
 
@@ -184,6 +185,9 @@ MyKit/
     index.json                cache of file hashes
     stars.json                your starred sounds (never pushed)
 ```
+
+**WAV files can be stored compressed.**
+`kit compact` stores saved WAV files as FLAC, which holds exactly the same samples in about half the space. A file is still named by the hash of the original WAV, since versions and credits depend on that hash, so the packed copy has to turn back into the original byte for byte, header included. It keeps the bytes before and after the samples (the format, and chunks such as a DAW's loop points) as they are, with the samples as FLAC in between (`objects/ab/cdef....kz`). A file is packed only after unpacking it gave back the original hash, and the original is removed only after the packed copy is written. Anything that reads stored files asks the store for one by hash and gets the original back; to play or export an old version, a packed file is unpacked once into `.kit/cache`. Float and 32-bit WAV files, other formats, files under 64 KB and files that would not shrink by at least 10% are left as they are. The encoder (`flacenc.py`) uses FLAC's fixed predictors, Rice codes chosen per part of each block, and left/side, right/side or mid/side stereo; it leaves out FLAC's other predictor (LPC), so its files are a few percent bigger than those of the `flac` tool, and in Python it takes roughly a fifth to a half of a sound's own length to encode it.
 
 **Sync sends only what is missing.**
 `push` walks the history back from `HEAD` until it reaches a version the remote already has, then uploads those versions oldest first. For each one it uploads only the objects the remote lacks, then the commit, and moves the remote's `HEAD` last. An interrupted push can leave extra objects on the remote but never a version with pieces missing. `pull` does the same in the other direction and re-hashes every download, so a corrupted file is rejected.
@@ -228,6 +232,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/s3remote.py` | S3 / R2 remote |
 | `src/kit/wavfile.py` | Reads WAV and AIFF files, including float and extensible ones |
 | `src/kit/flac.py` | Decodes FLAC files (prediction plus Rice-coded differences) |
+| `src/kit/pack.py` | A WAV file as its header bytes plus FLAC samples, and back |
 | `src/kit/flacenc.py` | Encodes FLAC files (fixed predictors, Rice codes, stereo decorrelation) |
 | `src/kit/mp3.py` | Length and format of MP3 files, from their frame headers |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
@@ -270,7 +275,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |
-| Storing large audio compressed (FLAC) | in progress: the encoder is done (bit-exact, checked against ffmpeg) |
+| Storing WAV files compressed, as FLAC (`kit compact`) | done; not yet automatic, and shared folders still hold plain WAV |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.
 

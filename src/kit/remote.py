@@ -288,7 +288,7 @@ def push(repo: Repo, remote: Remote) -> SyncResult:
         needed = [commit.manifest, *(entry["hash"] for entry in manifest.values())]
         for digest in dict.fromkeys(needed):  # each hash once, order kept
             if not remote.has_object(digest):
-                remote.upload_object(digest, repo.store.path_for(digest))
+                remote.upload_object(digest, repo.store.file_for(digest))
                 objects += 1
         # A commit is written only after everything it points to. If the
         # upload dies halfway, the remote holds some extra objects but never a

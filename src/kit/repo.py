@@ -22,7 +22,7 @@ from pathlib import Path, PurePosixPath
 
 from . import names
 from .commits import Commit, lineage, new_commit, parse_commit
-from .hashing import hash_file, is_digest
+from .hashing import is_digest
 from .manifest import Change, Manifest, diff, dumps, loads, merge_manifests, scan
 from .objects import ObjectStore
 
@@ -452,7 +452,7 @@ class Repo:
         """Re-hash everything in .kit and report anything damaged or missing."""
         problems = []
         for digest in self.store.all_hashes():
-            if hash_file(self.store.path_for(digest)) != digest:
+            if not self.store.intact(digest):
                 problems.append(f"stored file {digest[:8]} is damaged")
         for path in sorted(self.commits_dir.glob("*.json")):
             try:

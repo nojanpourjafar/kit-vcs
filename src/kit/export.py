@@ -58,7 +58,7 @@ def export(repo: Repo, ref: str, folder: Path) -> tuple[Path, int, int]:
             # depend on the compression library's version, which would break the
             # "same version, same bytes" promise between computers.
             info.compress_type = zipfile.ZIP_STORED
-            with repo.store.path_for(entry["hash"]).open("rb") as source, \
+            with repo.store.file_for(entry["hash"]).open("rb") as source, \
                     archive.open(info, "w", force_zip64=entry["size"] >= 2**31) as target:
                 shutil.copyfileobj(source, target, 1024 * 1024)
     os.replace(partial, out)

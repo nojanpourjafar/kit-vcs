@@ -235,7 +235,7 @@ class App:
             "id": commit.id, "author": commit.author, "message": commit.message,
             "time": commit.time, "latest": commit.id == repo.head(), "names": repo.names_of(commit.id),
             "sounds": self._sounds(manifest, changes, by_hash, labels,
-                                   locate=lambda path, entry: repo.store.path_for(entry["hash"]),
+                                   locate=lambda path, entry: repo.store.file_for(entry["hash"]),
                                    key="hash", before=before),
             "removed": [c.path for c in changes if c.kind == "removed"],
             "changes": [vars(change) for change in changes],
@@ -277,7 +277,7 @@ class App:
         """The file behind an audio or waveform request, and its real name."""
         repo = self.repo()
         if "hash" in query:
-            return repo.store.path_for(query["hash"]), query.get("name", "")
+            return repo.store.file_for(query["hash"]), query.get("name", "")
         rel = query.get("path", "")
         if any(part.startswith(".") for part in rel.split("/")):
             raise KitError("no such sound")  # never serve .kit or other hidden files
