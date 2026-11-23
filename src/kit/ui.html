@@ -28,6 +28,11 @@ h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .section-head h2 { margin: 0; }
 .section-tools { display: flex; align-items: center; gap: 8px; }
 .section-tools .search { width: min(240px, 40vw); }
+.note { margin-top: 4px; font-size: 13px; overflow-wrap: anywhere; }
+.note .by { color: var(--muted); }
+.note-edit { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 4px 8px; font-size: 13px;
+  border: 1px solid var(--accent); border-radius: 6px; background: var(--card); }
+.pen { padding: 4px 8px; font-size: 14px; line-height: 1; color: var(--muted); }
 .star { padding: 4px 8px; font-size: 15px; line-height: 1; color: var(--muted); }
 .star.on, button.only.on { color: var(--accent); border-color: var(--accent); }
 button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
@@ -247,10 +252,13 @@ function soundRow(sound, live) {
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
     // Two empty spans keep what arrives later in a fixed order: the length of
     // a sound the page decoded, then the tempo or note heard in it.
-    h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"}))));
+    h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"})),
+    noteLine(sound)));
   row.append(waveBox(row, sound));
   if (live) {
     row.dataset.starred = sound.starred ? "1" : "";
+    row.append(h("button", {class: "pen", title: "Write a note on this sound (N). Notes are shared when you push.",
+      "aria-label": `Note on ${sound.path}`, onclick: () => editNote(row, sound)}, "✎"));
     row.append(h("button", {class: sound.starred ? "star on" : "star", "aria-pressed": String(Boolean(sound.starred)),
       title: "Star this sound (S). Stars are yours alone: they are never pushed.",
       "aria-label": `Star ${sound.path}`, onclick: () => star(row, sound)}, sound.starred ? "★" : "☆"));
@@ -271,7 +279,7 @@ function dragOut(row, sound) {
   row.classList.add("draggable");
   row.title = "Drag into FL Studio or any other app";
   row.addEventListener("mousedown", (down) => {
-    if (down.button !== 0 || down.target.closest("button, .wave")) return;
+    if (down.button !== 0 || down.target.closest("button, .wave, input")) return;
     down.preventDefault();  // no text selection while dragging
     const move = (event) => {
       if (Math.hypot(event.clientX - down.clientX, event.clientY - down.clientY) < 5) return;
@@ -314,6 +322,48 @@ function soundSection(title, sounds, live = false) {
   return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), list, none);
 }
 
+// A sound's note, under its details: "use for the hook — Lucas". Shared with
+// everyone the kit is shared with; on old versions it shows the kit's note
+// for that file.
+function noteLine(sound) {
+  if (!sound.note) return null;
+  return h("div", {class: "note"}, sound.note.text, h("span", {class: "by"}, ` — ${sound.note.by}`));
+}
+
+// Write or change a note in place: Enter or clicking away saves, Esc cancels,
+// and saving an empty note clears it. Only the row changes, so playback goes on.
+function editNote(row, sound) {
+  if (row.querySelector(".note-edit")) return row.querySelector(".note-edit").focus();
+  const old = row.querySelector(".note");
+  const input = h("input", {type: "text", class: "note-edit", maxlength: 300, value: sound.note ? sound.note.text : "",
+    placeholder: "A note on this sound, like: use for the hook", "aria-label": `Note on ${sound.path}`});
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    let note = sound.note;
+    if (save && input.value.trim() !== (sound.note ? sound.note.text : "")) {
+      try {
+        note = (await api("/api/note", {path: sound.path, text: input.value})).note;
+      } catch (error) {
+        toast(error.message, true);
+      }
+    }
+    sound.note = note;
+    input.replaceWith(noteLine(sound) || "");
+    row.dataset.search = searchText(sound);
+  };
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();  // typing here is not a keyboard shortcut
+    if (event.key === "Enter") finish(true);
+    if (event.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("click", (event) => event.stopPropagation());
+  if (old) old.replaceWith(input); else row.querySelector(".what").append(input);
+  input.focus();
+}
+
 // Star or unstar a sound. Only the row changes: redrawing the whole screen
 // would interrupt a sound that is playing.
 async function star(row, sound) {
@@ -353,6 +403,7 @@ function searchText(sound) {
     words.push(`${note}${mode}`, `${note} ${mode}`, `${note} ${long}`, `${note}${long}`);
     if (mode === "min") words.push(`${note}m`);
   }
+  if (sound.note) words.push(sound.note.text);
   return words.join(" | ").toLowerCase();
 }
 
@@ -392,7 +443,7 @@ function filter(list, none) {
 
 // /  jump to the search box (as on GitHub)      Esc  clear the search
 // ↑ ↓  choose a sound                            Space  play or pause it
-// Enter in the search box  play the first match  S  star or unstar it
+// Enter in the search box  play the first match  S  star or unstar it   N  write a note
 
 // The chosen sound's path. Kept outside the rows, like `search`, so the choice
 // survives the screen being redrawn.
@@ -441,6 +492,9 @@ document.addEventListener("keydown", (event) => {
   } else if (event.key.toLowerCase() === "s" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
     const row = visibleRows().find((candidate) => candidate.dataset.path === selected);
     if (row && row.querySelector(".star")) row.querySelector(".star").click();  // only on the "Now" screen
+  } else if (event.key.toLowerCase() === "n" && !typing && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    const row = visibleRows().find((candidate) => candidate.dataset.path === selected);
+    if (row && row.querySelector(".pen")) { event.preventDefault(); row.querySelector(".pen").click(); }
   }
 });
 

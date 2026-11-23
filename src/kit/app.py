@@ -192,11 +192,13 @@ class App:
         changes = diff(saved, working)
         repo.follow_renames(changes)
         stars = repo.stars()
+        notes = repo.notes()
         by_hash = {saved[path]["hash"]: commit for path, commit in repo.credits().items()}
         sounds = self._sounds(working, changes, by_hash, labels,
                               locate=lambda path, entry: repo.folder / path, key="path", before=saved)
         for sound in sounds:
             sound["starred"] = sound["path"] in stars
+            sound["note"] = notes.get(sound["path"])
         return {
             "repo": True,
             "name": self.folder.name,
@@ -235,13 +237,16 @@ class App:
         before = repo.manifest_of(base)
         changes = diff(before, manifest)
         by_hash = {manifest[path]["hash"]: c for path, c in repo.credits(commit.id).items()}
+        sounds = self._sounds(manifest, changes, by_hash, labels,
+                              locate=lambda path, entry: repo.store.file_for(entry["hash"]), key="hash", before=before)
+        notes = repo.notes()
+        for sound in sounds:
+            sound["note"] = notes.get(sound["path"])  # notes belong to the kit, not to one version
         return {
             "label": labels.get(commit.id, commit.id[:8]),
             "id": commit.id, "author": commit.author, "message": commit.message,
             "time": commit.time, "latest": commit.id == repo.head(), "names": repo.names_of(commit.id),
-            "sounds": self._sounds(manifest, changes, by_hash, labels,
-                                   locate=lambda path, entry: repo.store.file_for(entry["hash"]),
-                                   key="hash", before=before),
+            "sounds": sounds,
             "removed": [c.path for c in changes if c.kind == "removed"],
             "changes": [vars(change) for change in changes],
             "against": {"id": base, "label": labels.get(base, base[:8])} if base else None,
@@ -424,6 +429,10 @@ class App:
         if action == "close":
             self.folder = None
             return {"message": ""}
+        if action == "note":
+            repo = self.repo()
+            repo.note(body.get("path") or "", str(body.get("text") or ""))
+            return {"note": repo.notes().get(body.get("path") or "")}
         if action == "star":
             self.repo().star(body.get("path") or "", bool(body.get("on", True)))
             return {"message": ""}

@@ -111,6 +111,16 @@ class S3Remote:
         self.client.put_object(Bucket=self.bucket, Key=self.prefix + "names.json", Body=body)
 
 
+    def read_notes(self) -> dict[str, dict]:
+        from .remote import _parse_notes
+
+        return _parse_notes(self._read(self.prefix + "notes.json"))
+
+    def write_notes(self, notes: dict[str, dict]) -> None:
+        body = json.dumps(dict(sorted(notes.items())), indent=2).encode()
+        self.client.put_object(Bucket=self.bucket, Key=self.prefix + "notes.json", Body=body)
+
+
 def _error_code(err: Exception) -> str:
     """The error code from a botocore ClientError, or "" for anything else."""
     response = getattr(err, "response", None)

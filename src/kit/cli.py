@@ -323,6 +323,25 @@ def cmd_verify(args) -> None:
     raise KitError(f"{len(problems)} problem(s) found")
 
 
+def cmd_note(args) -> None:
+    repo = Repo.find()
+    path = args.path.replace("\\", "/")
+    if args.text is None:
+        note = repo.notes().get(path)
+        print(f'{note["text"]}  ({note["by"]})' if note else f"{path} has no note.")
+        return
+    repo.note(path, args.text)
+    print(f"Note on {path} saved; push to share it." if args.text.strip() else f"Note on {path} cleared.")
+
+
+def cmd_notes(args) -> None:
+    notes = Repo.find().notes()
+    if not notes:
+        print('No notes yet. Add one with: kit note "Loops/dark.wav" "use for the hook"')
+    for path, note in notes.items():
+        print(f"{path}: {note['text']}  ({note['by']})")
+
+
 def cmd_compact(args) -> None:
     repo = Repo.find()
 
@@ -435,6 +454,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("verify", help="check that nothing stored is damaged or missing")
     p.set_defaults(run=cmd_verify)
+
+    p = sub.add_parser("note", help='show, write or clear (with "") the note on a sound')
+    p.add_argument("path")
+    p.add_argument("text", nargs="?")
+    p.set_defaults(run=cmd_note)
+
+    p = sub.add_parser("notes", help="list the notes on sounds")
+    p.set_defaults(run=cmd_notes)
 
     p = sub.add_parser("compact", help="store saved WAV files as FLAC, about half the space")
     p.set_defaults(run=cmd_compact)

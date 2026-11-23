@@ -30,11 +30,11 @@ from .commits import Commit, lineage, parse_commit
 from .hashing import is_digest
 from .manifest import Change, loads
 from .objects import ObjectStore
-from .repo import KitError, Repo
+from .repo import KitError, Repo, clean_notes
 
 
 class Remote(Protocol):
-    """The twelve things any remote must be able to do."""
+    """The fourteen things any remote must be able to do."""
 
     def has_object(self, digest: str) -> bool: ...
     def upload_object(self, digest: str, src: Path) -> None: ...
@@ -48,6 +48,8 @@ class Remote(Protocol):
     def write_names(self, names: dict[str, str]) -> None: ...
     def upload_packed(self, digest: str, blob: bytes) -> None: ...
     def download_packed(self, digest: str) -> bytes | None: ...
+    def read_notes(self) -> dict[str, dict]: ...
+    def write_notes(self, notes: dict[str, dict]) -> None: ...
 
 
 class FolderRemote:
@@ -105,6 +107,13 @@ class FolderRemote:
         self.path.mkdir(parents=True, exist_ok=True)
         self._write(self.path / "names.json", json.dumps(dict(sorted(names.items())), indent=2).encode())
 
+    def read_notes(self) -> dict[str, dict]:
+        return _parse_notes((self.path / "notes.json").read_bytes() if (self.path / "notes.json").exists() else None)
+
+    def write_notes(self, notes: dict[str, dict]) -> None:
+        self.path.mkdir(parents=True, exist_ok=True)
+        self._write(self.path / "notes.json", json.dumps(dict(sorted(notes.items())), indent=2).encode())
+
     @staticmethod
     def _write(path: Path, data: bytes) -> None:
         tmp = path.with_name(path.name + ".tmp")
@@ -121,6 +130,23 @@ def _parse_names(data: bytes | None) -> dict[str, str]:
     if not isinstance(names, dict):
         return {}
     return {k: v for k, v in names.items() if isinstance(k, str) and isinstance(v, str) and is_digest(v)}
+
+
+def _parse_notes(data: bytes | None) -> dict[str, dict]:
+    """A remote's notes file, read defensively like its names."""
+    try:
+        return clean_notes(json.loads(data)) if data else {}
+    except ValueError:
+        return {}
+
+
+def share_notes(repo: Repo, remote: Remote) -> None:
+    """After a push: merge the notes both ways, so both hold the latest of each."""
+    theirs = remote.read_notes()
+    repo.take_notes(theirs)
+    merged = repo._all_notes()
+    if merged != theirs:
+        remote.write_notes(merged)
 
 
 def _same_name(name: str, names: dict[str, str]) -> str | None:
@@ -318,6 +344,7 @@ def push(repo: Repo, remote: Remote) -> SyncResult:
     if remote_head != head:
         remote.write_head(head)
     names, clashes = share_names(repo, remote)  # after HEAD: every version they name is there by now
+    share_notes(repo, remote)
     return SyncResult(len(missing), objects, names=names, name_clashes=clashes)
 
 
@@ -374,6 +401,7 @@ def pull(repo: Repo, remote: Remote) -> SyncResult:
 
     result = repo.merge(remote_head)
     names, clashes = take_names(repo, remote)
+    repo.take_notes(remote.read_notes())
     return SyncResult(len(incoming), objects, result.kind, result.changes, result.conflicts, names, clashes)
 
 

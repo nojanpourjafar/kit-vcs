@@ -71,6 +71,8 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`, and one-shots whose names give no key get the note they play, shown as `≈F#`, so an 808 can be matched to the key of a song; see below for how reliable both are. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, S stars it, and Enter in the search box plays the first match.
 
+The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
+
 The ☆ on each sound stars it, and **★ Starred** beside the search box shows only the starred ones. Stars are yours alone: they stay in your copy of the kit and are never pushed.
 
 A saved version is shown compared with the one before it. The **Compared with** box picks any older version instead, and the badges, the list of removed sounds and the Before buttons all follow, so it shows everything that changed since, say, the version you last sent someone.
@@ -157,6 +159,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit resolve <path> --keep mine\|theirs\|both` | Settle a sound both sides changed |
 | `kit clone <where> [folder]` | Make a new kit folder from a remote |
 | `kit verify` | Check that nothing stored is damaged or missing |
+| `kit note <path> ["text"]` | Show, write, or clear (with `""`) the note on a sound; `kit notes` lists them |
 | `kit compact` | Store saved WAV files as FLAC inside `.kit`, in about half the space |
 
 Versions can be named as `v1`, `v2`, ..., as `latest`, by a name given with `kit name` ("1.0", "Sold on BeatStars"), or by the start of their ID. `where` is a folder path or `s3://bucket/prefix`.
@@ -184,6 +187,7 @@ MyKit/
     config.json               author name and default remote
     index.json                cache of file hashes
     stars.json                your starred sounds (never pushed)
+    notes.json                notes on sounds (shared by push and pull)
 ```
 
 **WAV files can be stored compressed.**
@@ -278,6 +282,7 @@ The merge compares both sides with the last version they share. A file changed o
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |
 | Storing WAV files compressed, as FLAC (`kit compact`, and automatically in the app) | done |
+| Notes on sounds, shared with collaborators | done |
 | Sending them compressed through push and pull | done; everyone sharing a kit needs Kit 0.15 or newer |
 
 Known limits: a folder remote cannot lock, so two pushes in the same second can race; version numbers (`v1`, `v2`, ...) follow the local main line, and versions that arrived through a merge are shown by ID.

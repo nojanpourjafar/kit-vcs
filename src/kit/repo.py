@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -27,6 +28,27 @@ from .manifest import Change, Manifest, diff, dumps, loads, merge_manifests, sca
 from .objects import ObjectStore
 
 DIR = ".kit"
+
+
+MAX_NOTE = 300  # characters
+
+
+def _now() -> str:
+    """The time, precise enough to order two edits made a moment apart."""
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def clean_notes(data) -> dict[str, dict]:
+    """Notes read from a file, keeping only well-formed ones: they may come from other people."""
+    if not isinstance(data, dict):
+        return {}
+    clean = {}
+    for path, note in data.items():
+        if (isinstance(path, str) and isinstance(note, dict) and isinstance(note.get("text"), str)
+                and isinstance(note.get("by"), str) and isinstance(note.get("time"), str)
+                and len(note["text"]) <= MAX_NOTE):
+            clean[path] = {"text": note["text"], "by": note["by"][:80], "time": note["time"][:40]}
+    return clean
 
 
 class KitError(Exception):
@@ -424,14 +446,68 @@ class Repo:
         self._save_stars(stars)
 
     def follow_renames(self, changes: list[Change]) -> None:
-        """Move stars along with renamed sounds, so a favourite stays starred under its new name."""
+        """Move stars and notes along with renamed sounds, so they stay with the sound."""
+        renamed = {c.old_path: c.path for c in changes if c.kind == "renamed"}
         stars = self.stars()
-        moved = {c.old_path: c.path for c in changes if c.kind == "renamed" and c.old_path in stars}
+        moved = {old: new for old, new in renamed.items() if old in stars}
         if moved:
             self._save_stars((stars - moved.keys()) | set(moved.values()))
+        notes = self._all_notes()
+        moving = {old: new for old, new in renamed.items() if notes.get(old, {}).get("text") and new not in self.notes()}
+        if moving:
+            for old, new in moving.items():
+                notes[new] = {**notes[old], "time": _now()}           # newer than the old name's note, so it wins everywhere
+                notes[old] = {"text": "", "by": self.author, "time": _now()}  # and the old name's note is cleared everywhere
+            self._save_notes(notes)
 
     def _save_stars(self, stars: set[str]) -> None:
         _atomic_write(self.dir / "stars.json", json.dumps(sorted(stars), indent=2).encode())
+
+    # ---- notes -----------------------------------------------------------
+    # A short note on a sound ("use for the hook"). Unlike stars, notes are
+    # shared: push and pull carry them, like version names. Each note records
+    # who wrote it and when; when two people changed the same note, the later
+    # change wins. Clearing a note is kept as an empty note with its time, so
+    # the clearing reaches everyone too instead of the old note coming back.
+
+    def notes(self) -> dict[str, dict]:
+        """{path: {"text", "by", "time"}} for every sound with a note."""
+        return {path: note for path, note in self._all_notes().items() if note["text"]}
+
+    def note(self, path: str, text: str) -> None:
+        """Write, change or (with empty text) clear the note on a sound in the folder."""
+        text = " ".join(text.split())  # one line
+        if len(text) > MAX_NOTE:
+            raise KitError(f"a note can be up to {MAX_NOTE} characters")
+        if text and not self._safe_path(path).is_file():
+            raise KitError(f"there is no sound at {path}")
+        notes = self._all_notes()
+        if notes.get(path, {}).get("text", "") == text:
+            return  # nothing changed: keep the old time, so it does not win over newer ones elsewhere
+        notes[path] = {"text": text, "by": self.author, "time": _now()}
+        self._save_notes(notes)
+
+    def take_notes(self, incoming: dict[str, dict]) -> int:
+        """Merge notes from elsewhere: for each sound, the later note wins. Returns how many changed here."""
+        notes = self._all_notes()
+        changed = 0
+        for path, note in clean_notes(incoming).items():
+            if path not in notes or note["time"] > notes[path]["time"]:
+                changed += notes.get(path, {}).get("text", "") != note["text"]
+                notes[path] = note
+        if notes != self._all_notes():
+            self._save_notes(notes)
+        return changed
+
+    def _all_notes(self) -> dict[str, dict]:
+        """Every note, cleared ones included (as empty text)."""
+        try:
+            return clean_notes(json.loads((self.dir / "notes.json").read_text()))
+        except (OSError, ValueError):
+            return {}
+
+    def _save_notes(self, notes: dict[str, dict]) -> None:
+        _atomic_write(self.dir / "notes.json", json.dumps(dict(sorted(notes.items())), indent=2).encode())
 
     def credits(self, ref: str | None = None) -> dict[str, Commit]:
         """For each file in a version, the commit that first brought in that audio.
