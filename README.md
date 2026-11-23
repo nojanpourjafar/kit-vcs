@@ -154,6 +154,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit ui` | Open Kit as an app in your browser |
 | `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
 | `kit show [v2]` | Write a version out as a single web page you can send to someone |
+| `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit splits [v2]` | Save a split sheet (PDF): who added which sounds, a share for each person, and lines to sign |
 | `kit export [v2]` | Save a version as a plain zip next to the kit, for people who do not use Kit |
 | `kit remote [where]` | Show or set the default remote |
@@ -191,6 +192,7 @@ MyKit/
     index.json                cache of file hashes
     stars.json                your starred sounds (never pushed)
     notes.json                notes on sounds (shared by push and pull)
+    fingerprints.json         what each sound sounds like, for `kit dupes` (never pushed)
 ```
 
 **WAV files can be stored compressed.**
@@ -220,6 +222,7 @@ The merge compares both sides with the last version they share. A file changed o
 - Credits follow the audio, not the file name: each sound is credited to the author of the first version that contained its hash, including versions that arrived through a merge.
 - Tempo detection finds where the hits are (sudden rises in loudness), checks which beat length lines them up best, and uses the loop's length to make the answer exact, since loops are cut to whole bars. On 180 generated drum loops (trap, boom bap, four-on-the-floor; 70 to 180 BPM; with swing and noise) it was exact for 72%, half or double the tempo for 13%, gave no answer for 12% and was otherwise wrong for 3%. One-shots (an 808, a kick) get no tempo: a beat needs at least four hits. It has not yet been measured on real sample packs. It reads WAV, AIFF and FLAC files (8- to 32-bit integer, or float).
 - Key detection takes up to 16 slices of a loop, finds the strength of every frequency in each with a Fourier transform (written in Python), and adds up how much of each of the 12 notes is sounding whatever the octave. Those 12 amounts are compared with the Krumhansl–Kessler profiles of the 24 major and minor keys, and the best fit is the key. A key needs at least three notes clearly sounding, so drum loops and one-shots get none (one-shots get a note instead). A key and its relative (C major and A minor) share their notes, so between the two, the one whose home note the bass plays more wins, with the start of the loop counting most. On 96 generated chord-progression loops (pads and plucks, half of them with drums), it named the key for 76 (79%), the relative key for 1, gave no answer for 1, and was wrong for 18, mostly naming the key a fourth higher in minor progressions that lean on the iv chord. It takes about half a second per loop. It has not yet been measured on real sample packs.
+- `kit dupes` finds the same sound in several places. Identical files share a hash. For the rest, each sound gets a fingerprint: its length, its loudness over time (64 points across the first ten seconds) and its tone (40 bands from 40 Hz to 4 kHz, in decibels below its loudest band, so a louder or quieter copy looks the same). Two sounds are the same when their lengths are within 3%, their loudness curves are within 0.023 on average (allowing a shift of a millisecond or two), and no band that is clearly sounding differs by more than 10 dB. Only sounds of nearly the same length are compared, so thousands of sounds take seconds, and fingerprints are kept in `.kit/fingerprints.json`. On three sets of 22 generated drums with five kinds of copy each (resampled to 22, 48 and 96 kHz, turned down 9 dB, 24-bit), 311 of 330 copies were found (94%); every miss was a very short hat resampled to another rate. Of 693 pairs of different sounds, 4 were wrongly matched, all generated snares that differed only slightly in pitch. Formats Kit does not decode (MP3) are found only as identical files.
 - MP3 files are not decoded in Python. Their length and format come from the frame headers: the frame count in the Xing tag most encoders write, less the silence the encoder added at each end (LAME and FFmpeg record it), so the length is exact to the sample; without a tag, the frames are counted one by one. The waveform is drawn by the page, which decodes the file with the Web Audio API, as it does for AAC (`.m4a`) and Ogg files. Files over 30 MB are skipped. For tempo and note, the page also mixes the first 30 seconds down to one channel at 22,050 samples a second and sends them to Kit (about 2.6 MB for a long loop, as raw numbers rather than JSON), which runs the same detection as for a WAV file. For an MP3, the exact length from its headers is used, since the tempo search depends on it.
 - Note detection compares a stretch of the sound with itself shifted by each possible period and takes the shortest shift at which it lines up almost exactly: one cycle of the note (the YIN method). It starts 60 ms after the loudest point, past the attack and an 808's slide into the note. A chord also repeats, but only at a period far below its notes, where nothing actually sounds, so a note is given only when a real share of the sound's energy is at that pitch. Snares and hats never line up well enough and get none. On generated sounds it named 120 of 120 808s correctly (sliding, up to 40 cents out of tune, heavily distorted) and 35 of 36 synth notes from C3 to B5; the one miss gave no answer. Chords, snares and hats got no note. A kick whose pitch falls fast can come out a step away from its body's note. It has not yet been measured on real sample packs.
 - Names that Windows refuses (`What?.wav`, `AUX.wav`, a name ending in a dot) and names that differ only in capital letters are flagged by `kit status`, `kit commit` and the app, so they can be renamed before a Windows user pulls the kit. On Windows, a pull that would create one stops before writing any file.
@@ -247,6 +250,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/mp3.py` | Length and format of MP3 files, from their frame headers |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
+| `src/kit/fingerprint.py` | Sound fingerprints, and finding the same sound in several kits (`kit dupes`) |
 | `src/kit/splits.py` | The split sheet for a version (`kit splits`) |
 | `src/kit/pdf.py` | A very small PDF writer: pages of text and lines |
 | `src/kit/updates.py` | Asks GitHub whether a newer release is out |
@@ -286,6 +290,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Note of one-shots from their audio | done |
 | Key of melodic loops from their audio | done |
 | Split sheets (PDF) from credits | done |
+| Finding the same sound across kits (`kit dupes`) | done; in the app next |
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |

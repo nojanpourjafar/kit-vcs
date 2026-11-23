@@ -308,6 +308,32 @@ def cmd_splits(args) -> None:
     print(f"Wrote {out}")
 
 
+def cmd_dupes(args) -> None:
+    from .fingerprint import find_duplicates
+
+    folders = [Path(f) for f in args.folders] or [Repo.find().folder]
+    for folder in folders:
+        if not Path(folder).expanduser().is_dir():
+            raise KitError(f"there is no folder at {folder}")
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rListening: {done}/{total} sounds", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    groups = find_duplicates(folders, progress=progress)
+    if not groups:
+        print("No sound is in more than one place.")
+        return
+    several = len(folders) > 1
+    for group in groups:
+        kind = "The same file" if group.exact else "The same sound in different files"
+        print(f"{kind}, {len(group.places)} places:")
+        for place in group.places:
+            print(f"  {place.kit + '/' if several else ''}{place.path}")
+    extra = sum(group.extra_bytes for group in groups)
+    print(f"{len(groups)} sound(s) are in more than one place; the copies take {_size(extra)}.")
+
+
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
@@ -440,6 +466,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("version", nargs="?", help="default: the latest version")
     p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
     p.set_defaults(run=cmd_export)
+
+    p = sub.add_parser("dupes", help="find sounds that are in more than one place, even renamed or re-bounced")
+    p.add_argument("folders", nargs="*", help="kits or folders to look through (default: this kit)")
+    p.set_defaults(run=cmd_dupes)
 
     p = sub.add_parser("splits", help="save a split sheet (PDF): who added which sounds, with a share for each")
     p.add_argument("version", nargs="?", help="default: the latest version")
