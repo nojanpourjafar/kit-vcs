@@ -73,6 +73,8 @@ A modified sound has a **Before** button that plays its previous version from th
 
 The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
 
+**Split sheet**, beside the export button, saves a PDF for a version: each person's sounds (credited to whoever first added the audio, even after renames), a share for each person by number of sounds, and a line for each to write the agreed share and sign. When a beat made with the kit is placed, that is the record of who made what. The PDF is written by Kit's own small PDF writer (`pdf.py`), in Helvetica, and the same version always gives the same file.
+
 The ☆ on each sound stars it, and **★ Starred** beside the search box shows only the starred ones. Stars are yours alone: they stay in your copy of the kit and are never pushed.
 
 A saved version is shown compared with the one before it. The **Compared with** box picks any older version instead, and the badges, the list of removed sounds and the Before buttons all follow, so it shows everything that changed since, say, the version you last sent someone.
@@ -152,6 +154,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit ui` | Open Kit as an app in your browser |
 | `kit app [folder]` | Open Kit in its own window, starting on the list of your kits |
 | `kit show [v2]` | Write a version out as a single web page you can send to someone |
+| `kit splits [v2]` | Save a split sheet (PDF): who added which sounds, a share for each person, and lines to sign |
 | `kit export [v2]` | Save a version as a plain zip next to the kit, for people who do not use Kit |
 | `kit remote [where]` | Show or set the default remote |
 | `kit push [where]` | Send new versions to a remote |
@@ -244,6 +247,8 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/mp3.py` | Length and format of MP3 files, from their frame headers |
 | `src/kit/audio.py` | Length, sample rate, waveform outline, tempo and note |
 | `src/kit/export.py` | A version as a plain zip (`kit export`) |
+| `src/kit/splits.py` | The split sheet for a version (`kit splits`) |
+| `src/kit/pdf.py` | A very small PDF writer: pages of text and lines |
 | `src/kit/updates.py` | Asks GitHub whether a newer release is out |
 | `src/kit/diagnostics.py` | The error log and the "Report a problem" text |
 | `src/kit/report.py` | The `kit show` web page |
@@ -280,6 +285,7 @@ The merge compares both sides with the last version they share. A file changed o
 | FLAC files (decoded in plain Python) | done |
 | Note of one-shots from their audio | done |
 | Key of melodic loops from their audio | done |
+| Split sheets (PDF) from credits | done |
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |

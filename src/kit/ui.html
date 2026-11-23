@@ -514,7 +514,7 @@ function renderNow() {
     box.append(saveForm());
   } else {
     box.append(h("h1", {}, latest ? `Everything is saved in ${latest.label}` : "Nothing saved yet"));
-    if (latest) box.append(h("div", {class: "row"}, exportButton(latest.id, latest.label)));
+    if (latest) box.append(h("div", {class: "row"}, exportButton(latest.id, latest.label), splitButton(latest.id)));
     if (!state.sounds.length) {
       box.append(h("p", {class: "muted"}, "Add some sounds to this folder and they will show up here."));
     }
@@ -574,6 +574,12 @@ function nameButton(version) {
 function exportButton(id, label) {
   return h("button", {onclick: (event) => act("export", {version: id}, event.currentTarget)},
     `Export ${label} as zip`);
+}
+
+// A PDF of who added which sounds, with a share for each person and lines to sign.
+function splitButton(id) {
+  return h("button", {title: "A PDF of who added which sounds, with a share for each person, to agree and sign",
+    onclick: (event) => act("split-sheet", {version: id}, event.currentTarget)}, "Split sheet");
 }
 
 // ---- sounds both sides changed ---------------------------------------------
@@ -762,7 +768,7 @@ function toast(text, bad = false) {
 // Run an action on the server, show what it said, then redraw from fresh state.
 // Actions that leave the folder as it was keep you on the screen you are on;
 // the others (saving, restoring, pulling...) go back to the folder as it is now.
-const STAY = new Set(["name-version", "unname", "export", "reveal"]);
+const STAY = new Set(["name-version", "unname", "export", "reveal", "split-sheet"]);
 
 async function act(name, body, button) {
   if (button) button.disabled = true;
@@ -846,6 +852,7 @@ async function renderVersion(id) {
       `Put the folder back to ${version.label}`));
   }
   buttons.append(exportButton(version.id, version.names[0] || version.label));
+  buttons.append(splitButton(version.id));
   buttons.append(nameButton(version));
   box.append(buttons);
   box.append(compareLine(version, id));

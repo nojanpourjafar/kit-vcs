@@ -532,6 +532,15 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "split-sheet":
+            from .splits import write_split_sheet
+
+            out = write_split_sheet(repo, body.get("version") or "latest", downloads_folder())
+            try:
+                reveal(out)
+            except OSError:
+                pass
+            return {"message": f"Saved {out.name} in {out.parent.name}."}
         if action == "name-version":
             repo.name_version(body.get("name", ""), body.get("version", ""))
             return {"message": f"Named it {body.get('name', '').strip()}."}

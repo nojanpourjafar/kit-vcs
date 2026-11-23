@@ -300,6 +300,14 @@ def cmd_export(args) -> None:
     print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
 
 
+def cmd_splits(args) -> None:
+    from .splits import write_split_sheet
+
+    repo = Repo.find()
+    out = write_split_sheet(repo, args.version or "latest", Path(args.output or repo.folder.parent))
+    print(f"Wrote {out}")
+
+
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
@@ -432,6 +440,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("version", nargs="?", help="default: the latest version")
     p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
     p.set_defaults(run=cmd_export)
+
+    p = sub.add_parser("splits", help="save a split sheet (PDF): who added which sounds, with a share for each")
+    p.add_argument("version", nargs="?", help="default: the latest version")
+    p.add_argument("-o", "--output", help="the folder to put the PDF in (default: next to the kit)")
+    p.set_defaults(run=cmd_splits)
 
     p = sub.add_parser("show", help="open a version as a web page with waveforms and players")
     p.add_argument("version", nargs="?", help="default: the latest version")
