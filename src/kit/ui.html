@@ -26,6 +26,11 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: -2px 0 12px; }
+.filters .kinds-bar { margin: 0; }
+.song { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.song select { padding: 5px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+.song select.on { border-color: var(--accent); }
 .tempo { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .tempo input { width: 54px; padding: 5px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); text-align: right; }
@@ -250,6 +255,7 @@ function soundRow(sound, live) {
   const row = h("li", {class: sound.path === selected ? "sound selected" : "sound", "data-path": sound.path,
     "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(), "data-kind": sound.kind || "",
     onclick: () => select(row)});
+  row.sound = sound;  // for "Fits my song", which needs its tempo, key or note
   row.append(playButton(row, sound));
   if (sound.before) {
     // A modified sound: play its previous audio, at the same point, to hear what changed.
@@ -319,7 +325,7 @@ function soundSection(title, sounds, live = false) {
     onkeydown: (event) => {
       if (event.key === "Escape") { box.value = search = ""; filter(list, none); box.blur(); }
     }});
-  const tools = h("div", {class: "section-tools"}, tempoBox(), box);
+  const tools = h("div", {class: "section-tools"}, box);
   if (live) {
     // Show only the starred sounds. Stars belong to the folder as it is now, so
     // this is on the "Now" screen only.
@@ -333,8 +339,9 @@ function soundSection(title, sounds, live = false) {
     tools.prepend(only);
   }
   const bar = kindsBar(sounds, list, none, live);
+  const filters = h("div", {class: "filters"}, bar, songBox(list, none));
   filter(list, none);
-  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), bar, list, none);
+  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), filters, list, none);
 }
 
 // "Play loops at [140] BPM": every loop whose tempo Kit knows (from its name, or
@@ -351,7 +358,7 @@ let targetBpm = (() => {
   }
 })();
 
-function tempoBox() {
+function tempoBox(list, none) {
   const input = h("input", {type: "number", min: 40, max: 300, step: 1, placeholder: "BPM", value: targetBpm || "",
     class: targetBpm ? "on" : "", "aria-label": "Play loops at this tempo",
     oninput: () => {
@@ -362,10 +369,127 @@ function tempoBox() {
         if (targetBpm) localStorage.setItem("kit.targetBpm", String(targetBpm)); else localStorage.removeItem("kit.targetBpm");
       } catch (error) { /* only a convenience */ }
       if (currentSound) applyTempo(currentSound);  // a loop that is playing follows at once
+      if (fitsOn && list) filter(list, none);
     },
     onkeydown: (event) => event.stopPropagation()});  // typing a number is not a keyboard shortcut
   return h("label", {class: "tempo", title: "Play loops at this tempo, same pitch, repeating. Empty: as they are."},
     "Loops at", input, "BPM");
+}
+
+// ---- "Fits my song" --------------------------------------------------------------
+
+// Pick the song's key next to its tempo, and "Fits" shows only what works with
+// both: loops at the tempo (or half or double), in the key or one that mixes
+// with it, and one-shots whose note is in the key's scale (an 808 in F with a
+// song in F# minor does not fit; one in A does). Drums with no pitch fit any key.
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const KEYS = NOTE_NAMES.flatMap((note) => [`${note} min`, `${note} maj`]);
+
+// A note's place in the octave, 0 to 11, whether written with a sharp or a flat ("Bb" = "A#").
+function pitch(note) {
+  const base = {C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11}[note[0].toUpperCase()];
+  const shift = note.slice(1) === "#" ? 1 : note.slice(1) === "b" ? -1 : 0;
+  return (base + shift + 12) % 12;
+}
+let targetKey = remembered("kit.targetKey", (value) => KEYS.includes(value) ? value : null);
+let fitsOn = false;
+
+function remembered(name, check) {
+  try {
+    return check(localStorage.getItem(name));
+  } catch (error) {
+    return null;
+  }
+}
+
+function remember(name, value) {
+  try {
+    if (value) localStorage.setItem(name, String(value)); else localStorage.removeItem(name);
+  } catch (error) { /* only a convenience */ }
+}
+
+function songBox(list, none) {
+  const key = h("select", {"aria-label": "The song's key", class: targetKey ? "on" : "", onchange: () => {
+    targetKey = key.value || null;
+    key.classList.toggle("on", Boolean(targetKey));
+    remember("kit.targetKey", targetKey);
+    if (fitsOn) filter(list, none);
+  }}, h("option", {value: ""}, "Key"), KEYS.map((name) => h("option", {value: name, selected: name === targetKey}, name)));
+  const status = h("span", {class: "muted small"});
+  const fits = h("button", {class: fitsOn ? "only on" : "only", "aria-pressed": String(fitsOn),
+    title: "Show only sounds that fit the song's tempo and key", onclick: () => {
+      fitsOn = !fitsOn;
+      fits.classList.toggle("on", fitsOn);
+      fits.setAttribute("aria-pressed", String(fitsOn));
+      filter(list, none);
+      if (fitsOn) hearAll(list, none, status);
+    }}, "Fits");
+  return h("div", {class: "song"}, tempoBox(list, none), key, fits, status);
+}
+
+// Whether a sound fits the song. What is not known about it does not count
+// against it: a hat has no key, a one-shot has no tempo.
+function fitsSong(sound) {
+  const bpm = sound.bpm || sound.heardBpm;
+  if (targetBpm && bpm && (sound.kind === "Loop" || sound.bpm || sound.heardBpm)) {
+    let ratio = targetBpm / bpm;
+    while (ratio > Math.SQRT2) ratio /= 2;
+    while (ratio < Math.SQRT1_2) ratio *= 2;
+    if (Math.abs(ratio - 1) > 0.03) return false;  // more than 3% off: it would have to be stretched
+  }
+  if (!targetKey) return true;
+  const key = sound.key || sound.heardKey;
+  if (key) return keysMix(key, targetKey);
+  const note = sound.heardNote;
+  if (note) return inScale(note, targetKey);
+  return true;
+}
+
+// Keys that mix (the Camelot wheel DJs use): the same key, its relative (C major
+// and A minor share their notes), and the keys a fifth up or down in the same mode.
+function keysMix(a, b) {
+  const place = (key) => {
+    const [note, mode] = key.split(" ");
+    const tonic = pitch(note);
+    const major = mode === "maj" ? tonic : (tonic + 3) % 12;  // a minor key sits with its relative major
+    return {fifths: (major * 7) % 12, mode};
+  };
+  const x = place(a), y = place(b);
+  const steps = Math.min((x.fifths - y.fifths + 12) % 12, (y.fifths - x.fifths + 12) % 12);
+  return x.mode === y.mode ? steps <= 1 : steps === 0;
+}
+
+function inScale(note, key) {
+  const [tonic, mode] = key.split(" ");
+  const steps = mode === "maj" ? [0, 2, 4, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 8, 10];
+  return steps.includes((pitch(note) - pitch(tonic) + 12) % 12);
+}
+
+// Sounds are listened to only when they scroll near the screen. "Fits" needs to
+// know about all of them, so it listens to the rest, three at a time.
+async function hearAll(list, none, status) {
+  const waiting = [...list.children].filter((row) => row.sound && !row.sound.heardPromise
+    && (!row.sound.bpm || !row.sound.key));
+  let left = waiting.length;
+  const show = () => { status.textContent = left && fitsOn ? `Listening to ${left} more…` : ""; };
+  show();
+  const next = async () => {
+    while (waiting.length && fitsOn && list.isConnected) {
+      const row = waiting.shift();
+      await hear(row, row.sound);
+      left--;
+      show();
+      filter(list, none);
+    }
+  };
+  await Promise.all([next(), next(), next()]);
+  show();
+}
+
+// Each sound is listened to once, however many things ask.
+function hear(row, sound) {
+  if (!sound.heardPromise) sound.heardPromise = listen(row, sound);
+  return sound.heardPromise;
 }
 
 // How much faster (above 1) or slower a sound plays to match the chosen tempo.
@@ -552,11 +676,13 @@ function filter(list, none) {
   let shown = 0;
   for (const row of list.children) {
     row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key)
-      && (!onlyStars || row.dataset.starred === "1") && (!kindFilter || row.dataset.kind === kindFilter));
+      && (!onlyStars || row.dataset.starred === "1") && (!kindFilter || row.dataset.kind === kindFilter)
+      && (!fitsOn || !row.sound || fitsSong(row.sound)));
     if (!row.hidden) shown++;
   }
   none.hidden = shown > 0;
-  none.textContent = kindFilter && !search.trim() && !onlyStars ? `No ${kindFilter} sounds here.`
+  none.textContent = fitsOn && !search.trim() && !onlyStars && !kindFilter ? "Nothing here fits that tempo and key."
+    : kindFilter && !search.trim() && !onlyStars ? `No ${kindFilter} sounds here.`
     : !onlyStars ? `No ${kindFilter ? kindFilter + " " : ""}sounds match "${search}".`
     : search.trim() ? `No starred sounds match "${search}".`
     : "No starred sounds yet. Click ☆ on a sound, or choose one and press S.";
@@ -1066,7 +1192,7 @@ function waveBox(row, sound) {
   box.dataset.source = sound.source;
   box.load = () => {  // called once the row is near the screen
     drawWave(box, row, sound);
-    if (!sound.bpm || !sound.key) listen(row, sound);
+    if (!sound.bpm || !sound.key) hear(row, sound);
   };
   nearScreen.observe(box);
   return box;
@@ -1083,11 +1209,15 @@ async function listen(row, sound) {
   } catch (error) {
     return;
   }
-  if (!heard || !row.isConnected) return;  // nothing to go on, or the screen was redrawn meanwhile
+  if (!heard) return;
+  // Kept on the sound, for "Loops at" and "Fits", even if the row is gone.
+  if (heard.bpm && !sound.bpm) sound.heardBpm = heard.bpm;
+  if (heard.key && !sound.key) sound.heardKey = heard.key;
+  if (heard.note && !sound.key) sound.heardNote = heard.note;
+  if (!row.isConnected) return;  // the screen was redrawn meanwhile
   const info = row.querySelector(".heard");
   const shown = [];
   if (heard.bpm && !sound.bpm) {
-    sound.heardBpm = heard.bpm;  // so "Loops at" can match it
     const bpm = Math.round(heard.bpm);
     shown.push(`≈${bpm} BPM`);
     row.dataset.search += ` | ${bpm} | ${bpm}bpm`;

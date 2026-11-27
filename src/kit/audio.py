@@ -420,8 +420,11 @@ def key_of(samples, rate: int) -> str | None:
     if sum(chroma) == 0:
         return None
     # A key needs chords or a melody: at least three notes clearly sounding. A drum
-    # loop's tuned kick gives one or two strong notes and nothing else.
-    if sum(level >= 0.25 * max(chroma) for level in chroma) < 3:
+    # loop's tuned kick gives one or two strong notes and nothing else, and its
+    # snares and hats are noise, which sounds on nearly every note at once: on
+    # generated loops, drums lit 10 to 12 of the 12 notes and chord loops 3 to 8.
+    sounding = sum(level >= 0.25 * max(chroma) for level in chroma)
+    if sounding < 3 or sounding >= 10:
         return None
     fits = []
     for tonic in range(12):
