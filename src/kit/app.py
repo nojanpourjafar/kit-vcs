@@ -292,17 +292,54 @@ class App:
         return sounds
 
     def locate(self, query: dict) -> tuple[Path, str]:
-        """The file behind an audio or waveform request, and its real name."""
-        repo = self.repo()
-        if "hash" in query:
-            return repo.store.file_for(query["hash"]), query.get("name", "")
+        """The file behind an audio or waveform request, and its real name.
+
+        `kit` asks for a sound in another kit (from "More like this"). Only
+        kits opened before can be asked for, never any folder on the computer.
+        """
         rel = query.get("path", "")
         if any(part.startswith(".") for part in rel.split("/")):
             raise KitError("no such sound")  # never serve .kit or other hidden files
+        if "kit" in query:
+            folder = Path(query["kit"]).resolve()
+            if folder != self.folder and folder not in {Path(p).resolve() for p in self._recent_paths()}:
+                raise KitError("no such sound")
+            path = (folder / rel).resolve()
+            if not path.is_relative_to(folder) or not path.is_file():
+                raise KitError("no such sound")
+            return path, rel
+        repo = self.repo()
+        if "hash" in query:
+            return repo.store.file_for(query["hash"]), query.get("name", "")
         path = repo._safe_path(rel)
         if not path.is_file():
             raise KitError("no such sound")
         return path, rel
+
+    def similar(self, query: dict) -> list[dict]:
+        """The 10 sounds most like one in the open kit, from it and every kit opened before."""
+        from .fingerprint import most_like
+
+        self.locate(query)  # the sound must exist
+        folders = [self.folder] + [Path(p) for p in self._recent_paths()
+                                   if Path(p).is_dir() and Path(p).resolve() != self.folder.resolve()]
+
+        def progress(done: int, total: int) -> None:
+            self.progress = {"files": done, "files_total": total, "bytes": 0, "bytes_total": 0}
+
+        try:
+            found = most_like(folders, self.folder, query["path"], progress=progress)
+        except ValueError as err:
+            raise KitError(str(err)) from None
+        here = self.folder.resolve()
+        return [{
+            "path": place.path,
+            "kit": place.kit,
+            "label": "in this kit" if Path(place.folder) == here else f"in {place.kit}",
+            "source": f"path={_quote(place.path)}" if Path(place.folder) == here
+                      else f"kit={_quote(place.folder)}&path={_quote(place.path)}",
+            "distance": round(score, 2),
+        } for place, score in found]
 
     def peaks(self, query: dict) -> list[float] | None:
         path, name = self.locate(query)
@@ -676,6 +713,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"checked": self.app.update_checked, "version": self.app.update})
         if url.path == "/api/tempo":
             return self._run(lambda: self.app.listen(query), lock=False)
+        if url.path == "/api/similar":
+            # No lock: making fingerprints for kits not yet listened to takes a while.
+            return self._run(lambda: {"sounds": self.app.similar(query)}, lock=False)
         if url.path == "/api/peaks":
             # No lock either: a FLAC file is decoded in Python, which can take
             # seconds for a long one, and that must not hold up saving.

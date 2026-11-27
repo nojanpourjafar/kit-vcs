@@ -334,6 +334,34 @@ def cmd_dupes(args) -> None:
     print(f"{len(groups)} sound(s) are in more than one place; the copies take {_size(extra)}.")
 
 
+def cmd_like(args) -> None:
+    from .fingerprint import most_like
+
+    repo = Repo.find()
+    sound = Path(args.sound).expanduser().resolve()
+    if not sound.is_relative_to(repo.folder) or not sound.is_file():
+        raise KitError(f"there is no sound at {args.sound} in this kit")
+    folders = [repo.folder] + [Path(f) for f in args.kits]
+    for folder in folders:
+        if not Path(folder).expanduser().is_dir():
+            raise KitError(f"there is no folder at {folder}")
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rListening: {done}/{total} sounds", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    try:
+        found = most_like(folders, repo.folder, sound.relative_to(repo.folder).as_posix(), args.count, progress)
+    except ValueError as err:
+        raise KitError(str(err)) from None
+    if not found:
+        print("There is no other sound to compare it with.")
+        return
+    several = len(folders) > 1
+    for place, score in found:
+        print(f"{score:6.2f}  {place.kit + '/' if several else ''}{place.path}")
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -521,6 +549,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("dupes", help="find sounds that are in more than one place, even renamed or re-bounced")
     p.add_argument("folders", nargs="*", help="kits or folders to look through (default: this kit)")
     p.set_defaults(run=cmd_dupes)
+
+    p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
+    p.add_argument("sound", help="a sound in this kit")
+    p.add_argument("kits", nargs="*", help="other kits or folders to look through too")
+    p.add_argument("-n", "--count", type=int, default=10, help="how many to list (default: 10)")
+    p.set_defaults(run=cmd_like)
 
     p = sub.add_parser("splits", help="save a split sheet (PDF): who added which sounds, with a share for each")
     p.add_argument("version", nargs="?", help="default: the latest version")

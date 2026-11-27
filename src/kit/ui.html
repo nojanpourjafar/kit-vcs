@@ -97,6 +97,9 @@ ul, ol { list-style: none; margin: 0; padding: 0; }
 main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
 .sounds { display: grid; gap: 8px; }
+/* "More like this": the closest sounds, listed under the one they are like. */
+.like { padding: 2px 0 6px 26px; border-left: 2px solid var(--line); margin-left: 12px; }
+.like .sound { padding: 6px 12px; }
 .sound { display: flex; align-items: center; gap: 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .what { flex: 1; min-width: 0; }
@@ -277,6 +280,9 @@ function soundRow(sound, live) {
       row.append(h("button", {class: "pen", title: "Chop: cut this loop into one-shots, one file per hit",
         "aria-label": `Chop ${sound.path}`, onclick: (event) => act("chop", {path: sound.path}, event.currentTarget)}, "✂"));
     }
+    row.append(h("button", {class: "pen", title: "More like this: the 10 closest sounds, in this kit and every kit you opened before",
+      "aria-label": `More like ${sound.path}`, "aria-expanded": "false",
+      onclick: (event) => moreLike(row, sound, event.currentTarget)}, "≈"));
     row.append(h("button", {class: "pen", title: "Write a note on this sound (N). Notes are shared when you push.",
       "aria-label": `Note on ${sound.path}`, onclick: () => editNote(row, sound)}, "✎"));
     row.append(h("button", {class: sound.starred ? "star on" : "star", "aria-pressed": String(Boolean(sound.starred)),
@@ -287,6 +293,38 @@ function soundRow(sound, live) {
     dragOut(row, sound);
   }
   return row;
+}
+
+// Open (or close) the list of sounds most like this one, right under it. The
+// first time across many kits takes a while: every sound is listened to once,
+// then remembered in each kit's .kit folder.
+async function moreLike(row, sound, button) {
+  const open = row.nextElementSibling;
+  if (open && open.classList.contains("like")) {
+    open.remove();
+    button.setAttribute("aria-expanded", "false");
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "…";
+  try {
+    const {sounds} = await api(`/api/similar?path=${encodeURIComponent(sound.path)}`);
+    const rows = sounds.map((like) => {
+      const line = soundRow(like, false);
+      line.onclick = null;  // these are not part of the list the arrow keys move through
+      line.classList.remove("selected");  // even when one has the same name as the chosen sound
+      return line;
+    });
+    row.after(h("li", {class: "like", "aria-label": `Sounds like ${sound.path}`},
+      h("p", {class: "muted"}, sounds.length ? "Most like it, closest first:" : "There is no other sound to compare it with yet."),
+      h("ul", {class: "sounds"}, rows)));
+    button.setAttribute("aria-expanded", "true");
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "≈";
+  }
 }
 
 // In the desktop app (macOS and Windows), a sound can be dragged out of the window
@@ -675,6 +713,10 @@ function filter(list, none) {
   const onlyStars = starredOnly && list.classList.contains("live");
   let shown = 0;
   for (const row of list.children) {
+    if (row.classList.contains("like")) {  // a "More like this" list goes with the sound above it
+      row.hidden = Boolean(row.previousElementSibling && row.previousElementSibling.hidden);
+      continue;
+    }
     row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key)
       && (!onlyStars || row.dataset.starred === "1") && (!kindFilter || row.dataset.kind === kindFilter)
       && (!fitsOn || !row.sound || fitsSong(row.sound)));
@@ -699,7 +741,7 @@ function filter(list, none) {
 let selected = null;
 
 // The rows the search has not hidden, top to bottom.
-const visibleRows = () => [...document.querySelectorAll(".sounds .sound")].filter((row) => !row.hidden);
+const visibleRows = () => [...document.querySelectorAll(".sounds .sound")].filter((row) => !row.hidden && !row.closest(".like"));
 
 function select(row) {
   for (const other of document.querySelectorAll(".sound.selected")) other.classList.remove("selected");
