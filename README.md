@@ -79,6 +79,8 @@ Beside that, pick the song's key and click **Fits** to see only what works with 
 
 The ≈ on a sound (**More like this**) lists the 10 sounds most like it, closest first, from this kit and every kit opened before, each with a play button and a waveform, so the kick that almost works can be swapped for its nearest neighbours from other packs. The first time takes a while for a big collection, as every sound is listened to once; after that it is quick. `kit like <sound> [kits...]` does the same in the terminal.
 
+The ♪ on a one-shot (an 808, a kick, a bass note) makes a copy tuned to another note, the way a sampler does: an 808 in G becomes "808 Glide in F#.wav" for a song in F# minor. The note offered first is the song's key from Fits. Kit measures the exact pitch the sound plays and speeds it up or slows it down by just enough, so a sound a little out of tune lands exactly on the note too; higher notes come out shorter and lower ones longer, as on any sampler, and it goes to the nearest octave, so nothing moves more than 6 semitones. The original is never changed, and loops are not tuned (that would change their tempo). On 45 tunings of generated 808s (sine and distorted, 40 cents off or less, to notes up to 6 semitones away) the copies landed within 5 cents of the note, a median of about 1; most people cannot hear 10. `kit tune <sound> <note>` does the same.
+
 The ✂ on a loop cuts it into one-shots: each hit becomes its own WAV file, in the loop's format, in a folder beside it ("Groove chops/Groove 01.wav", ...), ready to save as new sounds.
 
 Sounds with something wrong get a ⚠ badge (hover it for the details) and **⚠ Problems** above the list shows only those: **clipping** (the waveform flattened at full scale for 3 samples or more in a row, or a float file past full scale), a **late start** (more than 10 ms of silence before a one-shot, so it plays late when triggered), a **click at the end** (a one-shot cut off instead of faded out, or a loop whose end does not meet its start, so it clicks every time it repeats) and **silent** files. Sounds are checked in the background, together with the sorting by kind below, once each. `kit check` does the same in the terminal.
@@ -185,6 +187,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
+| `kit tune <sound> <note>` | Make a copy of a one-shot tuned to a note, the way a sampler does |
 | `kit pack [paths...] [--name N] [-o folder]` | Build a zip of the starred sounds (or these folders), sorted into folders by kind, with a contents list |
 | `kit changelog [version] [--since v] [-o folder]` | What each version added, renamed, changed and removed (also in every exported zip) |
 | `kit rename [--yes]` | Name sounds called "Sample 0042" after what Kit heard (kind, tempo and key, or note); shows first |
@@ -299,6 +302,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
 | `src/kit/loudness.py` | Loudness in LUFS (BS.1770) and peaks (`kit loudness`) |
 | `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`), and saving changed sounds safely |
+| `src/kit/tune.py` | Tuning one-shots to a note (`kit tune`) |
 | `src/kit/packs.py` | Building a pack from chosen sounds, sorted by kind (`kit pack`) |
 | `src/kit/changelog.py` | The changelog of a kit's versions (`kit changelog`, and Changes.txt in exports) |
 | `src/kit/rename.py` | Naming sounds after what Kit heard in them (`kit rename`) |
@@ -357,6 +361,7 @@ Every accuracy number above comes from generated sounds. Real packs are layered,
 | Naming sounds after what Kit heard (`kit rename`, and Name by sound in the app) | done |
 | A changelog per release, in every exported zip (`kit changelog`) | done |
 | Building a pack from starred sounds, sorted by kind (`kit pack`, and Build pack in the app) | done |
+| Tuning one-shots to a note (`kit tune`, and ♪ in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |

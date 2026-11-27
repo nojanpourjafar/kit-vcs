@@ -276,6 +276,15 @@ def note(file_path: Path, name: str) -> str | None:
 
 def note_of(samples: list[float], rate: int) -> str | None:
     """`note` for sound that is already decoded: mono samples, any scale."""
+    hz = hz_of(samples, rate)
+    if hz is None:
+        return None
+    midi = round(69 + 12 * math.log2(hz / 440))
+    return NOTE_NAMES[midi % 12]
+
+
+def hz_of(samples: list[float], rate: int) -> float | None:
+    """The exact pitch a one-shot plays, in Hz (see `note`), or None when it has no clear pitch."""
     samples = samples[:int(rate * 1.5)]
     # Work at about 11 kHz: plenty for notes up to 1 kHz, and four times less work.
     step = max(1, rate // 11025)
@@ -331,8 +340,7 @@ def note_of(samples: list[float], rate: int) -> str | None:
     # Fourier transform) and give no note when it is small.
     if _share_at(head, hz / rate) < 0.1:
         return None
-    midi = round(69 + 12 * math.log2(hz / 440))
-    return NOTE_NAMES[midi % 12]
+    return hz
 
 
 def _share_at(samples: list[float], cycles_per_sample: float) -> float:

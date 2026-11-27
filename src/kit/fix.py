@@ -86,11 +86,15 @@ def read(repo, path: str, verb: str) -> tuple[list, int, int, int, bool]:
     return _decode(raw, width, is_float), rate, channels, width, is_float
 
 
-def save(repo, path: str, word: str, values: list, rate: int, channels: int, width: int, is_float: bool) -> Path:
-    """Write changed samples: over the sound if a version keeps the original, else beside it as "<name> <word>.wav"."""
+def save(repo, path: str, word: str, values: list, rate: int, channels: int, width: int, is_float: bool,
+         in_place: bool = True) -> Path:
+    """Write changed samples: over the sound if a version keeps the original, else beside it as "<name> <word>.wav".
+
+    With `in_place` False, always beside it: for a new sound made from this one.
+    """
     source = repo.folder / path
     entry = repo.working().get(path)
-    if entry is not None and repo.store.has(entry["hash"]) and path.lower().endswith(".wav"):
+    if in_place and entry is not None and repo.store.has(entry["hash"]) and path.lower().endswith(".wav"):
         out = source
     else:
         out = source.with_name(f"{source.stem} {word}.wav")

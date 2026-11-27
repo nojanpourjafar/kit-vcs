@@ -300,6 +300,22 @@ def cmd_export(args) -> None:
     print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
 
 
+def cmd_tune(args) -> None:
+    from .tune import tune
+
+    repo = Repo.find()
+    sound = Path(args.sound).expanduser().resolve()
+    if not sound.is_relative_to(repo.folder) or not sound.is_file():
+        raise KitError(f"there is no sound at {args.sound} in this kit")
+    path = sound.relative_to(repo.folder).as_posix()
+    out, played, shift = tune(repo, path, args.note)
+    if out is None:
+        print(f"{path} is already in {args.note}.")
+    else:
+        print(f"{path} plays {played}; tuned {'up' if shift > 0 else 'down'} {abs(shift):.2f} semitones: "
+              f"{out.relative_to(repo.folder).as_posix()}")
+
+
 def cmd_pack(args) -> None:
     from .audio import key, note, tempo
     from .packs import build
@@ -747,6 +763,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("kits", nargs="*", help="other kits or folders to look through too")
     p.add_argument("-n", "--count", type=int, default=10, help="how many to list (default: 10)")
     p.set_defaults(run=cmd_like)
+
+    p = sub.add_parser("tune", help="make a copy of a one-shot (808, kick, bass) tuned to a note")
+    p.add_argument("sound", help="a one-shot in this kit")
+    p.add_argument("note", help="the note to tune it to: C, C#, D ... B (Db, Eb ... work too)")
+    p.set_defaults(run=cmd_tune)
 
     p = sub.add_parser("pack", help="build a zip of chosen sounds, sorted into folders by kind, with a list of contents")
     p.add_argument("paths", nargs="*", help="sounds or folders to put in (default: the starred sounds)")

@@ -679,6 +679,17 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "tune":
+            from .tune import tune
+
+            path = body.get("path") or ""
+            self.locate({"path": path})  # the sound must exist
+            out, played, shift = tune(repo, path, str(body.get("note") or ""))
+            if out is None:
+                return {"message": f"{Path(path).name} is already in {body.get('note')}."}
+            way = "up" if shift > 0 else "down"
+            return {"message": f"Tuned {Path(path).name} from {played} {way} {abs(shift):.1f} semitones: "
+                               f"{out.name}. Save a version to keep it."}
         if action == "build-pack":
             from .packs import build
 
