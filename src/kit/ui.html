@@ -53,6 +53,7 @@ button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+button.link.fix { margin-left: 6px; font-size: 12px; }
 .badge.problem { color: var(--modified); border-color: var(--modified); text-transform: none; letter-spacing: 0; cursor: help; }
 .badge.named { color: var(--accent); text-transform: none; letter-spacing: 0; }
 .names { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
@@ -333,7 +334,12 @@ function problemBadge(sound) {
   const found = sound.problems || [];
   if (!found.length) return null;
   const text = found.length === 1 ? found[0].split(":")[0] : `${found.length} problems`;
-  return h("span", {class: "badge problem", title: found.join("\n"), "aria-label": found.join(". ")}, `⚠ ${text}`);
+  const badge = h("span", {class: "badge problem", title: found.join("\n"), "aria-label": found.join(". ")}, `⚠ ${text}`);
+  if (!sound.fixable) return badge;
+  return h("span", {class: "problem-wrap"}, badge, h("button", {class: "link fix",
+    title: "Fix it: trim the silence at the start, fade out the click. A saved sound is fixed in place (Before plays the original); an unsaved one is copied first.",
+    "aria-label": `Fix ${sound.path}`, onclick: (event) => { event.stopPropagation(); act("fix", {path: sound.path}, event.currentTarget); }},
+    "Fix"));
 }
 
 // In the desktop app (macOS and Windows), a sound can be dragged out of the window
@@ -592,6 +598,11 @@ function kindsBar(sounds, list, none, live) {
     bar.append(h("button", {class: kindFilter === "problems" ? "chip problems on" : "chip problems", "data-kind": "problems",
       title: "Show only sounds with problems: clipping, a late start, a click at the end, silence",
       onclick: () => choose("problems")}, "⚠ Problems", h("small", {}, String(troubled))));
+    const fixable = sounds.filter((sound) => sound.fixable).map((sound) => sound.path);
+    if (fixable.length > 1) {
+      bar.append(h("button", {class: "chip", title: "Trim every late start and fade out every click. Clipping cannot be fixed.",
+        onclick: (event) => act("fix", {paths: fixable}, event.currentTarget)}, `Fix all ${fixable.length}`));
+    }
   }
   if (live && state.sorting) {
     const note = h("span", {class: "muted small"}, "Sorting and checking sounds by listening…");
@@ -624,7 +635,8 @@ async function watchSorting(sounds, list, none, bar) {
     if (!row.sound) continue;  // a "More like this" list
     row.dataset.kind = kinds[row.dataset.path] || "";
     row.dataset.problems = (row.sound.problems || []).length ? "1" : "";
-    const old = row.querySelector(":scope > .what .badge.problem");
+    if (row.sound.path in found) row.sound.fixable = (fresh.sounds.find((x) => x.path === row.sound.path) || {}).fixable;
+    const old = row.querySelector(":scope > .what .problem-wrap, :scope > .what .badge.problem");
     const badge = problemBadge(row.sound);
     if (old) old.remove();
     if (badge) row.querySelector(":scope > .what .name").append(badge);

@@ -389,6 +389,30 @@ def cmd_check(args) -> None:
     print(f"{len(found)} sound(s) with problems.")
 
 
+def cmd_fix(args) -> None:
+    from .fix import FIXABLE, fix
+    from .kinds import sort_kit
+    from .problems import check_kit
+
+    repo = Repo.find()
+    working = repo.working()
+    loops = {path for path, kind in sort_kit(repo, working=working).items() if kind["kind"] == "Loop"}
+    found = check_kit(repo, loops, working=working)
+    if args.paths:
+        wanted = [p.rstrip("/") for p in args.paths]
+        found = {path: probs for path, probs in found.items()
+                 if any(path == w or path.startswith(w + "/") for w in wanted)}
+    fixable = {path: probs for path, probs in found.items() if any(p["kind"] in FIXABLE for p in probs)}
+    if not fixable:
+        print("Nothing to fix." + (" (Clipping cannot be undone.)" if found else ""))
+        return
+    for path, probs in fixable.items():
+        out, done = fix(repo, path, probs, path in loops)
+        where = "" if out.name == Path(path).name else f" -> {out.relative_to(repo.folder).as_posix()}"
+        print(f"{path}{where}: {', '.join(done)}")
+    print(f"Fixed {len(fixable)} sound(s). Save a version to keep the fixes.")
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -580,6 +604,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="find clipping, late starts, clicks and silent files")
     p.add_argument("paths", nargs="*", help="only these sounds or folders (default: the whole kit)")
     p.set_defaults(run=cmd_check)
+
+    p = sub.add_parser("fix", help="trim late starts and fade out clicks (saved sounds are fixed in place)")
+    p.add_argument("paths", nargs="*", help="only these sounds or folders (default: the whole kit)")
+    p.set_defaults(run=cmd_fix)
 
     p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
     p.add_argument("sound", help="a sound in this kit")

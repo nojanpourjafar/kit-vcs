@@ -206,6 +206,7 @@ class App:
             sound["note"] = notes.get(sound["path"])
             sound["kind"] = known.get(sound["path"])
             sound["problems"] = [problem["text"] for problem in found.get(sound["path"], [])]
+            sound["fixable"] = any(problem["kind"] in ("late", "click") for problem in found.get(sound["path"], []))
         return {
             "repo": True,
             "name": self.folder.name,
@@ -317,6 +318,19 @@ class App:
         if not path.is_file():
             raise KitError("no such sound")
         return path, rel
+
+    def _fix(self, repo: Repo, paths: list[str]) -> list[tuple[Path, list[str]]]:
+        """Check each sound again (the file may have changed) and fix what can be fixed."""
+        from .fix import fix
+
+        known = kinds.known(repo, repo.working())
+        done = []
+        for path in paths:
+            source, name = self.locate({"path": path})
+            loop = known.get(path) == "Loop"
+            found = problems.check(source, name, loop) or []
+            done.append(fix(repo, path, found, loop))
+        return done
 
     def similar(self, query: dict) -> list[dict]:
         """The 10 sounds most like one in the open kit, from it and every kit opened before."""
@@ -616,6 +630,16 @@ class App:
             files = chop(path, name)
             return {"message": f"Cut {name} into {len(files)} pieces, in "
                                f"{files[0].parent.relative_to(repo.folder).as_posix()}/. Save a version to keep them."}
+        if action == "fix":
+            paths = body.get("paths") or [body.get("path") or ""]
+            fixed = self._fix(repo, paths)
+            self.sort_soon()  # check the fixed files again
+            if len(paths) == 1:
+                out, done = fixed[0]
+                where = "" if out.name == Path(paths[0]).name else f", as {out.name}"
+                return {"message": f"Fixed {Path(paths[0]).name}{where}: {' and '.join(done)}. "
+                                   + ("Before plays the original." if not where else "Save a version to keep it.")}
+            return {"message": f"Fixed {len(fixed)} sounds. Save a version to keep the fixes; Before plays the originals."}
         if action == "split-sheet":
             from .splits import write_split_sheet
 

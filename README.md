@@ -81,6 +81,8 @@ The ✂ on a loop cuts it into one-shots: each hit becomes its own WAV file, in 
 
 Sounds with something wrong get a ⚠ badge (hover it for the details) and **⚠ Problems** above the list shows only those: **clipping** (the waveform flattened at full scale for 3 samples or more in a row, or a float file past full scale), a **late start** (more than 10 ms of silence before a one-shot, so it plays late when triggered), a **click at the end** (a one-shot cut off instead of faded out, or a loop whose end does not meet its start, so it clicks every time it repeats) and **silent** files. Sounds are checked in the background, together with the sorting by kind below, once each. `kit check` does the same in the terminal.
 
+**Fix**, beside the badge, trims a late start (keeping 1 ms before the sound) and fades out a click (the last 4 ms of a one-shot; the first and last 3 ms of a loop, so it keeps its length and stays in time). **Fix all** does every sound that can be fixed. A sound saved in a version is fixed in place, since Kit already keeps the original and **Before** plays it; a sound not saved yet, or one that is not a WAV, is written beside it as "Kick fixed.wav". Clipping cannot be fixed (the tops of the wave are gone), so it stays a warning. `kit fix` does the same in the terminal. On 622 generated sounds of seven kinds with a late start, a click at the end, or both, every fixed copy passed `kit check`.
+
 Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · Melodic · Loop, each with a count) show one kind at a time, together with the search and ★ Starred. Kinds come from names, and sounds whose names say nothing are listened to in the background when a kit is opened or saved (see `kit kinds` below); their buttons fill in when that is done.
 
 The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
@@ -170,6 +172,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit kinds [kind]` | Sort the sounds into kicks, 808s, snares, claps, hats, percs, melodic and loops |
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
+| `kit fix [paths...]` | Trim late starts and fade out clicks (saved sounds in place, others as "... fixed.wav") |
 | `kit like <sound> [kits...]` | List the sounds most like one sound, here and in other kits (`-n` for how many) |
 | `kit splits [v2]` | Save a split sheet (PDF): who added which sounds, a share for each person, and lines to sign |
 | `kit export [v2]` | Save a version as a plain zip next to the kit, for people who do not use Kit |
@@ -275,6 +278,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/chop.py` | Cutting a loop into one-shots at each hit (`kit chop`) |
 | `src/kit/kinds.py` | The kind of each sound, from its name or its sound (`kit kinds`) |
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
+| `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`) |
 | `src/kit/fingerprint.py` | Sound fingerprints: the same sound in several kits (`kit dupes`), and the sounds most like one (`kit like`) |
 | `src/kit/splits.py` | The split sheet for a version (`kit splits`) |
 | `src/kit/pdf.py` | A very small PDF writer: pages of text and lines |
@@ -317,7 +321,8 @@ The merge compares both sides with the last version they share. A file changed o
 | Split sheets (PDF) from credits | done |
 | Finding the same sound across kits (`kit dupes`) | done; in the app next |
 | "More like this": the closest sounds across kits (`kit like`, and ≈ in the app) | done |
-| Problem finder: clipping, late starts, clicks, silence (`kit check`, and ⚠ in the app) | done; fixing them in one click next |
+| Problem finder: clipping, late starts, clicks, silence (`kit check`, and ⚠ in the app) | done |
+| Fixing late starts and clicks in one click (`kit fix`, and Fix in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |
