@@ -71,6 +71,8 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`, melodic loops whose names give no key get one from the audio, shown as `≈F# min` and searchable like a key in a name, and one-shots whose names give no key get the note they play, shown as `≈F#`, so an 808 can be matched to the key of a song; see below for how reliable both are. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, S stars it, and Enter in the search box plays the first match.
 
+**Loops at [140] BPM**, beside the search box, plays every loop whose tempo Kit knows (from its name, or heard) sped up or slowed down to that tempo at the same pitch, repeating, so loops from different packs can be heard together before they go into a project. A loop at about half or double the tempo plays in half or double time instead of being stretched that far; one-shots play as they are. The speed change is the web view's own (the audio element's playback rate with pitch kept), which is quick but can smear sharp hits when the change is large. The tempo is remembered; empty it to play everything as it is.
+
 The ✂ on a loop cuts it into one-shots: each hit becomes its own WAV file, in the loop's format, in a folder beside it ("Groove chops/Groove 01.wav", ...), ready to save as new sounds.
 
 Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · Melodic · Loop, each with a count) show one kind at a time, together with the search and ★ Starred. Kinds come from names, and sounds whose names say nothing are listened to in the background when a kit is opened or saved (see `kit kinds` below); their buttons fill in when that is done.
@@ -304,6 +306,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Finding the same sound across kits (`kit dupes`) | done; in the app next |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
+| Playing loops at a chosen tempo | done |
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |

@@ -26,6 +26,10 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
+.tempo { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.tempo input { width: 54px; padding: 5px 6px; font-size: 13px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); text-align: right; }
+.tempo input.on { border-color: var(--accent); color: var(--ink); }
 .kinds-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 12px; }
 button.chip { padding: 3px 11px; font-size: 13px; border-radius: 999px; }
 button.chip small { color: var(--muted); margin-left: 3px; }
@@ -315,7 +319,7 @@ function soundSection(title, sounds, live = false) {
     onkeydown: (event) => {
       if (event.key === "Escape") { box.value = search = ""; filter(list, none); box.blur(); }
     }});
-  const tools = h("div", {class: "section-tools"}, box);
+  const tools = h("div", {class: "section-tools"}, tempoBox(), box);
   if (live) {
     // Show only the starred sounds. Stars belong to the folder as it is now, so
     // this is on the "Now" screen only.
@@ -331,6 +335,58 @@ function soundSection(title, sounds, live = false) {
   const bar = kindsBar(sounds, list, none, live);
   filter(list, none);
   return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), bar, list, none);
+}
+
+// "Play loops at [140] BPM": every loop whose tempo Kit knows (from its name, or
+// heard: ≈) plays sped up or slowed down to that tempo, at the same pitch, and
+// repeats, so loops can be heard together before they go into a project. A loop
+// at about half or double the tempo plays at half or double time instead of
+// being stretched that far. Empty: everything plays as it is.
+let targetBpm = (() => {
+  try {
+    const saved = Number(localStorage.getItem("kit.targetBpm"));
+    return saved >= 40 && saved <= 300 ? saved : null;
+  } catch (error) {
+    return null;  // no storage in this window: start empty
+  }
+})();
+
+function tempoBox() {
+  const input = h("input", {type: "number", min: 40, max: 300, step: 1, placeholder: "BPM", value: targetBpm || "",
+    class: targetBpm ? "on" : "", "aria-label": "Play loops at this tempo",
+    oninput: () => {
+      const value = Number(input.value);
+      targetBpm = value >= 40 && value <= 300 ? value : null;
+      input.classList.toggle("on", Boolean(targetBpm));
+      try {
+        if (targetBpm) localStorage.setItem("kit.targetBpm", String(targetBpm)); else localStorage.removeItem("kit.targetBpm");
+      } catch (error) { /* only a convenience */ }
+      if (currentSound) applyTempo(currentSound);  // a loop that is playing follows at once
+    },
+    onkeydown: (event) => event.stopPropagation()});  // typing a number is not a keyboard shortcut
+  return h("label", {class: "tempo", title: "Play loops at this tempo, same pitch, repeating. Empty: as they are."},
+    "Loops at", input, "BPM");
+}
+
+// How much faster (above 1) or slower a sound plays to match the chosen tempo.
+function rateFor(sound) {
+  const bpm = sound.bpm || sound.heardBpm;
+  if (!targetBpm || !bpm) return 1;
+  let rate = targetBpm / bpm;
+  while (rate > 1.5) rate /= 2;   // a 70 BPM loop with 140 chosen: plays as it is, in half time
+  while (rate < 0.75) rate *= 2;
+  return rate;
+}
+
+function applyTempo(sound) {
+  const rate = rateFor(sound);
+  // Keep the pitch while changing the speed (each browser has had its own name for this).
+  for (const name of ["preservesPitch", "webkitPreservesPitch", "mozPreservesPitch"]) {
+    if (name in player) player[name] = true;
+  }
+  player.defaultPlaybackRate = rate;  // what loading a new sound starts at
+  player.playbackRate = rate;
+  player.loop = Boolean(targetBpm && (sound.bpm || sound.heardBpm));
 }
 
 // "All 24 · Kick 6 · 808 3 · Hat 8 ...": one button per kind found in the list.
@@ -955,6 +1011,7 @@ function compareLine(version, id) {
 
 const player = new Audio();
 let current = null;  // the row that is playing or paused
+let currentSound = null;  // the sound behind `current`, for its tempo
 
 function playButton(row, sound) {
   return h("button", {class: "play", "aria-label": `Play ${sound.path}`, onclick: () => toggle(row, sound)});
@@ -975,8 +1032,11 @@ function toggle(row, sound, which = "after") {
   row.classList.toggle("hearing-before", which === "before");
   if (!at) row.style.setProperty("--progress", 0);
   row.classList.add("started");
+  currentSound = sound;
+  applyTempo(sound);
   // An <audio> request cannot carry our header, so the token rides in the address.
   player.src = `/api/audio?${which === "before" ? sound.before : sound.source}&t=${TOKEN}`;
+  player.playbackRate = player.defaultPlaybackRate;  // loading resets it
   if (at) {
     player.addEventListener("loadedmetadata", () => { player.currentTime = Math.min(at, player.duration || at); },
       {once: true});
@@ -1027,6 +1087,7 @@ async function listen(row, sound) {
   const info = row.querySelector(".heard");
   const shown = [];
   if (heard.bpm && !sound.bpm) {
+    sound.heardBpm = heard.bpm;  // so "Loops at" can match it
     const bpm = Math.round(heard.bpm);
     shown.push(`≈${bpm} BPM`);
     row.dataset.search += ` | ${bpm} | ${bpm}bpm`;
