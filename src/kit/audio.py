@@ -478,3 +478,93 @@ def _fft(values: list[float]) -> list[complex]:
                 out[start + k], out[start + k + half] = a + b, a - b
         size *= 2
     return out
+
+
+# ---- what kind of sound it is -----------------------------------------------------
+
+KINDS = ("Loop", "Kick", "808", "Snare", "Clap", "Hat", "Perc", "Melodic")
+
+
+def kind(file_path: Path, name: str) -> str | None:
+    """`kind_of` for a sound file Kit can read: its first ten seconds, mixed to one channel."""
+    if not can_read(name):
+        return None
+    try:
+        with open_wav(file_path) as wav:
+            rate, channels = wav.rate, wav.channels
+            raw = wav.readframes(min(wav.frames, rate * 10))
+            samples = _floats(raw, wav.width) if wav.is_float else _samples(raw, wav.width)
+    except _WAVE_ERRORS:
+        return None
+    if channels > 1:
+        samples = [sum(samples[i:i + channels]) / channels for i in range(0, len(samples) - channels + 1, channels)]
+    else:
+        samples = list(samples)
+    return kind_of(samples, rate)  # any scale: only shares of energy and timings are compared
+
+
+def kind_of(samples, rate: int) -> str | None:
+    """Kick, 808, Snare, Clap, Hat, Perc, Melodic or Loop, from mono samples; None for silence.
+
+    It measures a few things a producer hears at once, and decides by rules:
+
+      * how long the sound is, and whether it has a beat (a loop);
+      * how its energy splits across low (under 150 Hz), body (150-600 Hz)
+        and high (over 5 kHz) frequencies, and how noisy it is (spectral
+        flatness: noise is flat, a note is a few sharp peaks);
+      * how fast it dies away, and whether it has a clear pitch.
+
+    The rules, in order: a beat makes a loop; mostly low makes a kick, or an
+    808 if it rings on; noisy and mostly high is a hat, noisy with a body is a
+    snare, and noisy without one is a clap; a clear pitch that rings is
+    melodic; anything else (a short knock or click) is perc.
+    """
+    if rate <= 0 or not samples:
+        return None
+    peak = max(range(len(samples)), key=lambda i: abs(samples[i]))
+    if abs(samples[peak]) < 1e-4 * (32768 if abs(samples[peak]) > 2 else 1):
+        return None  # silence, whether the samples run -1..1 or are 16-bit numbers
+    seconds = len(samples) / rate
+
+    # Loudness every 5 ms, and how long the sound takes to fall 20 dB below its peak.
+    hop = max(1, rate // 200)
+    rms = [math.sqrt(sum(x * x for x in samples[i:i + hop]) / hop) for i in range(0, len(samples) - hop + 1, hop)]
+    if not rms:
+        return None
+    top = max(rms)
+    at = rms.index(top)
+    decay = next((i - at for i in range(at, len(rms)) if rms[i] < 0.1 * top), len(rms) - at) * hop / rate
+
+    if seconds >= 1.5 and _hits([e * e for e in rms], 200) >= 4:
+        return "Loop"  # a beat
+    if seconds >= 2 and key_of(samples, rate) is not None:
+        return "Loop"  # chords or a melody: a melodic loop
+
+    # The spectrum around the hit: three windows from just before the peak.
+    size = 2048
+    start = max(0, peak - size // 4)
+    power = [0.0] * (size // 2)
+    for w in range(3):
+        chunk = samples[start + w * size // 2:start + w * size // 2 + size]
+        if len(chunk) < size:
+            chunk = list(chunk) + [0.0] * (size - len(chunk))
+        shape = [0.5 - 0.5 * math.cos(2 * math.pi * i / (size - 1)) for i in range(size)]
+        for k, c in enumerate(_fft([x * s for x, s in zip(chunk, shape)])[:size // 2]):
+            power[k] += abs(c) ** 2
+    hz = [k * rate / size for k in range(size // 2)]
+    total = sum(power[1:]) or 1.0
+    low = sum(p for f, p in zip(hz, power) if 20 <= f < 150) / total
+    body = sum(p for f, p in zip(hz, power) if 150 <= f < 600) / total
+    high = sum(p for f, p in zip(hz, power) if f >= 5000) / total
+    band = [p for f, p in zip(hz, power) if 200 <= f < min(12000, rate / 2)]
+    flatness = (math.exp(sum(math.log(p + 1e-20) for p in band) / len(band)) / (sum(band) / len(band) + 1e-20)) if band else 0.0
+
+    if low > 0.5:
+        return "808" if decay > 0.75 else "Kick"  # an 808 rings for a second or more; a kick is gone in half that
+    if flatness > 0.15:  # noise: hats, snares, claps
+        if high > 0.8:
+            return "Hat"
+        return "Snare" if body > 0.15 else "Clap"
+    if note_of(list(samples), rate) is not None and decay > 0.3:
+        return "Melodic"
+    return "Perc"

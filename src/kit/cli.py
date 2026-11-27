@@ -334,6 +334,32 @@ def cmd_dupes(args) -> None:
     print(f"{len(groups)} sound(s) are in more than one place; the copies take {_size(extra)}.")
 
 
+def cmd_kinds(args) -> None:
+    from .audio import KINDS
+    from .kinds import sort_kit
+
+    repo = Repo.find()
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rListening: {done}/{total} sounds", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    sorted_ = sort_kit(repo, progress=progress)
+    wanted = args.kind.capitalize() if args.kind and args.kind.lower() != "808" else args.kind
+    if wanted and wanted not in KINDS:
+        raise KitError(f"kinds are: {', '.join(KINDS)}")
+    for name in KINDS:
+        paths = [path for path, found in sorted_.items() if found["kind"] == name]
+        if wanted and name != wanted or not paths:
+            continue
+        print(f"{name} ({len(paths)}):")
+        for path in paths:
+            print(f"  {path}{'' if sorted_[path]['from'] == 'name' else '  (by its sound)'}")
+    unknown = len(repo.working()) - len(sorted_)
+    if unknown and not wanted:
+        print(f"{unknown} file(s) of no kind (not audio Kit can read, or silent).")
+
+
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
@@ -466,6 +492,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("version", nargs="?", help="default: the latest version")
     p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
     p.set_defaults(run=cmd_export)
+
+    p = sub.add_parser("kinds", help="sort the sounds into kicks, 808s, snares, claps, hats, percs, melodic and loops")
+    p.add_argument("kind", nargs="?", help="list only this kind, e.g. 808")
+    p.set_defaults(run=cmd_kinds)
 
     p = sub.add_parser("dupes", help="find sounds that are in more than one place, even renamed or re-bounced")
     p.add_argument("folders", nargs="*", help="kits or folders to look through (default: this kit)")
