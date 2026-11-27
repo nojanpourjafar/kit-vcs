@@ -413,6 +413,33 @@ def cmd_fix(args) -> None:
     print(f"Fixed {len(fixable)} sound(s). Save a version to keep the fixes.")
 
 
+def cmd_loudness(args) -> None:
+    from .kinds import sort_kit
+    from .loudness import apart, measure_kit, middle
+
+    repo = Repo.find()
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rMeasuring: {done}/{total} sounds", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    working = repo.working()
+    kind_of = {path: kind["kind"] for path, kind in sort_kit(repo, working=working).items()}
+    levels = measure_kit(repo, progress=progress, working=working)
+    if not levels:
+        print("No sounds Kit can measure.")
+        return
+    by_kind: dict[str, list[tuple[str, dict]]] = {}
+    for path, level in levels.items():
+        by_kind.setdefault(kind_of.get(path, "Other"), []).append((path, level))
+    for kind, items in sorted(by_kind.items()):
+        centre = middle([level["lufs"] for _, level in items]) if len(items) >= 3 else None
+        print(f"{kind}" + (f" (middle {centre:.1f} LUFS)" if centre is not None else ""))
+        for path, level in sorted(items, key=lambda item: -item[1]["lufs"]):
+            far = apart(level["lufs"], centre)
+            print(f"  {level['lufs']:6.1f} LUFS  peak {level['peak']:5.1f} dB  {path}" + (f"  <- {far}" if far else ""))
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -608,6 +635,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("fix", help="trim late starts and fade out clicks (saved sounds are fixed in place)")
     p.add_argument("paths", nargs="*", help="only these sounds or folders (default: the whole kit)")
     p.set_defaults(run=cmd_fix)
+
+    p = sub.add_parser("loudness", help="how loud each sound is (LUFS), grouped by kind, with the ones far off marked")
+    p.set_defaults(run=cmd_loudness)
 
     p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
     p.add_argument("sound", help="a sound in this kit")

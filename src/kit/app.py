@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import diagnostics, kinds, mp3, names, problems, remote, tags, updates
+from . import diagnostics, kinds, loudness, mp3, names, problems, remote, tags, updates
 from .audio import describe
 from .audio import key, key_of, note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
@@ -207,6 +207,7 @@ class App:
             sound["kind"] = known.get(sound["path"])
             sound["problems"] = [problem["text"] for problem in found.get(sound["path"], [])]
             sound["fixable"] = any(problem["kind"] in ("late", "click") for problem in found.get(sound["path"], []))
+        self._levels(repo, working, known, sounds)
         return {
             "repo": True,
             "name": self.folder.name,
@@ -318,6 +319,21 @@ class App:
         if not path.is_file():
             raise KitError("no such sound")
         return path, rel
+
+    def _levels(self, repo: Repo, working: dict, known: dict, sounds: list[dict]) -> None:
+        """Each sound's loudness and peak, and whether it is far louder or quieter than the
+        other sounds of its kind (a hat is meant to be quieter than an 808)."""
+        measured = loudness.known(repo, working)
+        by_kind: dict[str, list[float]] = {}
+        for path, level in measured.items():
+            if known.get(path):
+                by_kind.setdefault(known[path], []).append(level["lufs"])
+        middles = {kind: loudness.middle(levels) for kind, levels in by_kind.items() if len(levels) >= 3}
+        for sound in sounds:
+            level = measured.get(sound["path"])
+            sound["lufs"] = level["lufs"] if level else None
+            sound["peak"] = level["peak"] if level else None
+            sound["level"] = loudness.apart(level["lufs"], middles.get(known.get(sound["path"]))) if level else None
 
     def _fix(self, repo: Repo, paths: list[str]) -> list[tuple[Path, list[str]]]:
         """Check each sound again (the file may have changed) and fix what can be fixed."""
@@ -486,7 +502,8 @@ class App:
         with self.lock:
             working = repo.working()
         loops = {path for path, kind in kinds.known(repo, working).items() if kind == "Loop"}
-        if not kinds.unsorted(repo, working) and not problems.unchecked(repo, working, loops):
+        if (not kinds.unsorted(repo, working) and not problems.unchecked(repo, working, loops)
+                and not loudness.unmeasured(repo, working)):
             return
         self.sorting = True
 
@@ -496,6 +513,7 @@ class App:
                 # Loops are checked differently from one-shots, so sort first.
                 problems.check_kit(repo, {path for path, kind in sorted_.items() if kind["kind"] == "Loop"},
                                    working=working)
+                loudness.measure_kit(repo, working=working)
             except Exception:
                 diagnostics.record(config_dir(), f"Sorting sounds in {repo.folder}\n{traceback.format_exc()}")
             finally:

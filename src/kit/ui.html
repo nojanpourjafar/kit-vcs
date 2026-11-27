@@ -53,6 +53,7 @@ button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.level.far { color: var(--modified); }
 button.link.fix { margin-left: 6px; font-size: 12px; }
 .badge.problem { color: var(--modified); border-color: var(--modified); text-transform: none; letter-spacing: 0; cursor: help; }
 .badge.named { color: var(--accent); text-transform: none; letter-spacing: 0; }
@@ -272,7 +273,8 @@ function soundRow(sound, live) {
       sound.change && h("span", {class: `badge ${sound.change}`}, sound.change), problemBadge(sound)),
     // Two empty spans keep what arrives later in a fixed order: the length of
     // a sound the page decoded, then the tempo or note heard in it.
-    h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"})),
+    h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"}),
+      levelText(sound)),
     noteLine(sound)));
   row.append(waveBox(row, sound));
   if (live) {
@@ -327,6 +329,15 @@ async function moreLike(row, sound, button) {
     button.disabled = false;
     button.textContent = "≈";
   }
+}
+
+// " · -9.4 LUFS", and "much louder than the other kicks" when it is 6 LU or more
+// from their middle. Loudness is the BS.1770 measure; the peak is in the tooltip.
+function levelText(sound) {
+  if (sound.lufs === null || sound.lufs === undefined) return h("span", {class: "level"});
+  const kind = sound.kind === "808" ? "808s" : sound.kind === "Melodic" ? "melodic sounds" : `${(sound.kind || "").toLowerCase()}s`;
+  return h("span", {class: sound.level ? "level far" : "level", title: `Loudness ${sound.lufs} LUFS, peak ${sound.peak} dBFS`},
+    ` · ${sound.lufs.toFixed(1)} LUFS`, sound.level ? ` (${sound.level} than the other ${kind})` : "");
 }
 
 // "⚠ Clips", or "⚠ 2 problems": what Kit found wrong with a sound; the details are in the tooltip.
@@ -640,6 +651,11 @@ async function watchSorting(sounds, list, none, bar) {
     const badge = problemBadge(row.sound);
     if (old) old.remove();
     if (badge) row.querySelector(":scope > .what .name").append(badge);
+    const fresher = fresh.sounds.find((x) => x.path === row.sound.path);
+    if (fresher) {
+      Object.assign(row.sound, {lufs: fresher.lufs, peak: fresher.peak, level: fresher.level});
+      row.querySelector(":scope > .what .level").replaceWith(levelText(row.sound));
+    }
   }
   state.sorting = false;
   bar.replaceWith(kindsBar(sounds, list, none, true));
