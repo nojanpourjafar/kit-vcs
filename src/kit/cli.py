@@ -362,6 +362,33 @@ def cmd_like(args) -> None:
         print(f"{score:6.2f}  {place.kit + '/' if several else ''}{place.path}")
 
 
+def cmd_check(args) -> None:
+    from .kinds import sort_kit
+    from .problems import check_kit
+
+    repo = Repo.find()
+
+    def progress(done: int, total: int) -> None:
+        if sys.stderr.isatty():
+            print(f"\rChecking: {done}/{total} sounds", end="\n" if done == total else "", file=sys.stderr, flush=True)
+
+    working = repo.working()
+    loops = {path for path, kind in sort_kit(repo, working=working).items() if kind["kind"] == "Loop"}
+    found = check_kit(repo, loops, progress=progress, working=working)
+    if args.paths:
+        wanted = [p.rstrip("/") for p in args.paths]
+        found = {path: probs for path, probs in found.items()
+                 if any(path == w or path.startswith(w + "/") for w in wanted)}
+    if not found:
+        print("No problems found.")
+        return
+    for path, probs in found.items():
+        print(path)
+        for problem in probs:
+            print(f"  {problem['text']}")
+    print(f"{len(found)} sound(s) with problems.")
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -549,6 +576,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("dupes", help="find sounds that are in more than one place, even renamed or re-bounced")
     p.add_argument("folders", nargs="*", help="kits or folders to look through (default: this kit)")
     p.set_defaults(run=cmd_dupes)
+
+    p = sub.add_parser("check", help="find clipping, late starts, clicks and silent files")
+    p.add_argument("paths", nargs="*", help="only these sounds or folders (default: the whole kit)")
+    p.set_defaults(run=cmd_check)
 
     p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
     p.add_argument("sound", help="a sound in this kit")

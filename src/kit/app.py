@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import diagnostics, kinds, mp3, names, remote, tags, updates
+from . import diagnostics, kinds, mp3, names, problems, remote, tags, updates
 from .audio import describe
 from .audio import key, key_of, note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
@@ -200,10 +200,12 @@ class App:
         sounds = self._sounds(working, changes, by_hash, labels,
                               locate=lambda path, entry: repo.folder / path, key="path", before=saved)
         known = kinds.known(repo, working)
+        found = problems.known(repo, working, {path for path, kind in known.items() if kind == "Loop"})
         for sound in sounds:
             sound["starred"] = sound["path"] in stars
             sound["note"] = notes.get(sound["path"])
             sound["kind"] = known.get(sound["path"])
+            sound["problems"] = [problem["text"] for problem in found.get(sound["path"], [])]
         return {
             "repo": True,
             "name": self.folder.name,
@@ -458,7 +460,8 @@ class App:
         return result
 
     def sort_soon(self) -> None:
-        """Listen to the open kit's sounds whose names say nothing, on a background thread.
+        """Listen to the open kit's sounds whose names say nothing, and check every
+        sound for problems (clipping, a late start, a click), on a background thread.
 
         The folder is read under the lock, so it never runs at the same time as
         a save; the listening (a fraction of a second per sound) is not.
@@ -468,13 +471,17 @@ class App:
         repo = self.repo()
         with self.lock:
             working = repo.working()
-        if not kinds.unsorted(repo, working):
+        loops = {path for path, kind in kinds.known(repo, working).items() if kind == "Loop"}
+        if not kinds.unsorted(repo, working) and not problems.unchecked(repo, working, loops):
             return
         self.sorting = True
 
         def work() -> None:
             try:
-                kinds.sort_kit(repo, working=working)
+                sorted_ = kinds.sort_kit(repo, working=working)
+                # Loops are checked differently from one-shots, so sort first.
+                problems.check_kit(repo, {path for path, kind in sorted_.items() if kind["kind"] == "Loop"},
+                                   working=working)
             except Exception:
                 diagnostics.record(config_dir(), f"Sorting sounds in {repo.folder}\n{traceback.format_exc()}")
             finally:

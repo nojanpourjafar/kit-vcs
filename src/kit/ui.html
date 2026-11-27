@@ -53,6 +53,7 @@ button.only { padding: 5px 10px; font-size: 13px; white-space: nowrap; }
 .search { width: min(260px, 50%); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); }
 .none { margin: 8px 0 0; }
+.badge.problem { color: var(--modified); border-color: var(--modified); text-transform: none; letter-spacing: 0; cursor: help; }
 .badge.named { color: var(--accent); text-transform: none; letter-spacing: 0; }
 .names { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
 .names .badge button.link { margin-left: 4px; text-decoration: none; }
@@ -257,7 +258,7 @@ function soundRow(sound, live) {
   if (sound.info) info.push(sound.info);
   const row = h("li", {class: sound.path === selected ? "sound selected" : "sound", "data-path": sound.path,
     "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(), "data-kind": sound.kind || "",
-    onclick: () => select(row)});
+    "data-problems": (sound.problems || []).length ? "1" : "", onclick: () => select(row)});
   row.sound = sound;  // for "Fits my song", which needs its tempo, key or note
   row.append(playButton(row, sound));
   if (sound.before) {
@@ -267,7 +268,7 @@ function soundRow(sound, live) {
   }
   row.append(h("div", {class: "what"},
     h("div", {class: "name"}, sound.path,
-      sound.change && h("span", {class: `badge ${sound.change}`}, sound.change)),
+      sound.change && h("span", {class: `badge ${sound.change}`}, sound.change), problemBadge(sound)),
     // Two empty spans keep what arrives later in a fixed order: the length of
     // a sound the page decoded, then the tempo or note heard in it.
     h("div", {class: "info"}, info.join(" · "), h("span", {class: "length"}), h("span", {class: "heard"})),
@@ -325,6 +326,14 @@ async function moreLike(row, sound, button) {
     button.disabled = false;
     button.textContent = "≈";
   }
+}
+
+// "⚠ Clips", or "⚠ 2 problems": what Kit found wrong with a sound; the details are in the tooltip.
+function problemBadge(sound) {
+  const found = sound.problems || [];
+  if (!found.length) return null;
+  const text = found.length === 1 ? found[0].split(":")[0] : `${found.length} problems`;
+  return h("span", {class: "badge problem", title: found.join("\n"), "aria-label": found.join(". ")}, `⚠ ${text}`);
 }
 
 // In the desktop app (macOS and Windows), a sound can be dragged out of the window
@@ -560,7 +569,8 @@ function kindsBar(sounds, list, none, live) {
   const counts = {};
   for (const sound of sounds) if (sound.kind) counts[sound.kind] = (counts[sound.kind] || 0) + 1;
   const present = KIND_ORDER.filter((kind) => counts[kind]);
-  if (kindFilter && !present.includes(kindFilter)) kindFilter = null;
+  const troubled = sounds.filter((sound) => (sound.problems || []).length).length;
+  if (kindFilter && !present.includes(kindFilter) && !(kindFilter === "problems" && troubled)) kindFilter = null;
   const bar = h("div", {class: "kinds-bar"});
   const choose = (kind) => {
     kindFilter = kind;
@@ -576,8 +586,15 @@ function kindsBar(sounds, list, none, live) {
         onclick: () => choose(kind)}, kind, h("small", {}, String(counts[kind]))));
     }
   }
+  if (live && troubled) {
+    if (!present.length) bar.append(h("button", {class: kindFilter ? "chip" : "chip on", "data-kind": "",
+      onclick: () => choose(null)}, "All", h("small", {}, String(sounds.length))));
+    bar.append(h("button", {class: kindFilter === "problems" ? "chip problems on" : "chip problems", "data-kind": "problems",
+      title: "Show only sounds with problems: clipping, a late start, a click at the end, silence",
+      onclick: () => choose("problems")}, "⚠ Problems", h("small", {}, String(troubled))));
+  }
   if (live && state.sorting) {
-    const note = h("span", {class: "muted small"}, "Sorting sounds by listening…");
+    const note = h("span", {class: "muted small"}, "Sorting and checking sounds by listening…");
     bar.append(note);
     watchSorting(sounds, list, none, bar);
   }
@@ -598,8 +615,20 @@ async function watchSorting(sounds, list, none, bar) {
   if (!bar.isConnected) return;
   if (fresh.sorting) return watchSorting(sounds, list, none, bar);
   const kinds = Object.fromEntries((fresh.sounds || []).map((sound) => [sound.path, sound.kind]));
-  for (const sound of sounds) if (sound.path in kinds) sound.kind = kinds[sound.path];
-  for (const row of list.children) row.dataset.kind = kinds[row.dataset.path] || "";
+  const found = Object.fromEntries((fresh.sounds || []).map((sound) => [sound.path, sound.problems || []]));
+  for (const sound of sounds) {
+    if (sound.path in kinds) sound.kind = kinds[sound.path];
+    if (sound.path in found) sound.problems = found[sound.path];
+  }
+  for (const row of list.children) {
+    if (!row.sound) continue;  // a "More like this" list
+    row.dataset.kind = kinds[row.dataset.path] || "";
+    row.dataset.problems = (row.sound.problems || []).length ? "1" : "";
+    const old = row.querySelector(":scope > .what .badge.problem");
+    const badge = problemBadge(row.sound);
+    if (old) old.remove();
+    if (badge) row.querySelector(":scope > .what .name").append(badge);
+  }
   state.sorting = false;
   bar.replaceWith(kindsBar(sounds, list, none, true));
   filter(list, none);
@@ -718,14 +747,16 @@ function filter(list, none) {
       continue;
     }
     row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key)
-      && (!onlyStars || row.dataset.starred === "1") && (!kindFilter || row.dataset.kind === kindFilter)
+      && (!onlyStars || row.dataset.starred === "1")
+      && (!kindFilter || (kindFilter === "problems" ? row.dataset.problems === "1" : row.dataset.kind === kindFilter))
       && (!fitsOn || !row.sound || fitsSong(row.sound)));
     if (!row.hidden) shown++;
   }
   none.hidden = shown > 0;
   none.textContent = fitsOn && !search.trim() && !onlyStars && !kindFilter ? "Nothing here fits that tempo and key."
+    : kindFilter === "problems" && !search.trim() && !onlyStars ? "No sounds with problems here."
     : kindFilter && !search.trim() && !onlyStars ? `No ${kindFilter} sounds here.`
-    : !onlyStars ? `No ${kindFilter ? kindFilter + " " : ""}sounds match "${search}".`
+    : !onlyStars ? `No ${kindFilter === "problems" ? "sounds with problems" : (kindFilter ? kindFilter + " " : "") + "sounds"} match "${search}".`
     : search.trim() ? `No starred sounds match "${search}".`
     : "No starred sounds yet. Click ☆ on a sound, or choose one and press S.";
 }
