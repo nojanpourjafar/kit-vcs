@@ -300,6 +300,30 @@ def cmd_export(args) -> None:
     print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
 
 
+def cmd_pack(args) -> None:
+    from .audio import key, note, tempo
+    from .packs import build
+
+    repo = Repo.find()
+    working = repo.working()
+    if args.paths:
+        wanted = [p.rstrip("/") for p in args.paths]
+        paths = [path for path in working if any(path == w or path.startswith(w + "/") for w in wanted)]
+    else:
+        paths = sorted(repo.stars() & working.keys())
+        if not paths:
+            raise KitError("no sounds are starred; star some in the app (☆), or name sounds or folders: kit pack Kicks Loops")
+
+    def listen(path: str) -> dict:
+        file = repo.folder / path
+        bpm = tempo(file, path)
+        found_key = key(file, path)
+        return {"bpm": bpm, "key": found_key, "note": None if bpm or found_key else note(file, path)}
+
+    out, count = build(repo, paths, Path(args.output or repo.folder.parent), args.name, listen)
+    print(f"Wrote {out} ({count} sounds, sorted by kind)")
+
+
 def cmd_changelog(args) -> None:
     from .changelog import changelog, write_changelog
 
@@ -723,6 +747,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("kits", nargs="*", help="other kits or folders to look through too")
     p.add_argument("-n", "--count", type=int, default=10, help="how many to list (default: 10)")
     p.set_defaults(run=cmd_like)
+
+    p = sub.add_parser("pack", help="build a zip of chosen sounds, sorted into folders by kind, with a list of contents")
+    p.add_argument("paths", nargs="*", help="sounds or folders to put in (default: the starred sounds)")
+    p.add_argument("--name", help='the pack\'s name (default: "<kit> pack")')
+    p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
+    p.set_defaults(run=cmd_pack)
 
     p = sub.add_parser("changelog", help="what each version added, renamed, changed and removed")
     p.add_argument("version", nargs="?", help="up to this version (default: the latest)")

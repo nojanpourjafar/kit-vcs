@@ -651,6 +651,17 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "build-pack":
+            from .packs import build
+
+            paths = body.get("paths") or sorted(repo.stars() & repo.working().keys())
+            out, count = build(repo, paths, downloads_folder(), body.get("name"),
+                               listen=lambda path: self.listen({"path": path}))
+            try:
+                reveal(out)
+            except OSError:
+                pass
+            return {"message": f"Saved {out.name} ({count} sound{'s' if count != 1 else ''}, sorted by kind) in {out.parent.name}."}
         if action == "changelog":
             from .changelog import write_changelog
 

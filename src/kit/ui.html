@@ -440,6 +440,17 @@ function soundSection(title, sounds, live = false) {
   const bar = kindsBar(sounds, list, none, live);
   const filters = h("div", {class: "filters"}, bar, songBox(list, none));
   filter(list, none);
+  if (live) {
+    // The starred sounds, as a zip sorted into folders by kind. Read from the rows
+    // when clicked, so stars added since the page was drawn count.
+    tools.prepend(h("button", {class: "only",
+      title: "Build a pack: the starred sounds as a zip, sorted into folders by kind (Kicks, 808s, Loops...), with a list of contents",
+      onclick: (event) => {
+        const paths = [...list.children].filter((row) => row.dataset.starred === "1").map((row) => row.dataset.path);
+        if (!paths.length) return toast("Star the sounds for the pack first (☆ on each, or S).", true);
+        act("build-pack", {paths}, event.currentTarget);
+      }}, "Build pack"));
+  }
   const panel = h("div", {class: "rename-panel"});
   const unnamed = live ? sounds.filter((sound) => sound.unnamed).length : 0;
   if (unnamed) {
@@ -1172,7 +1183,7 @@ function toast(text, bad = false) {
 // Run an action on the server, show what it said, then redraw from fresh state.
 // Actions that leave the folder as it was keep you on the screen you are on;
 // the others (saving, restoring, pulling...) go back to the folder as it is now.
-const STAY = new Set(["name-version", "unname", "export", "reveal", "split-sheet", "changelog"]);
+const STAY = new Set(["name-version", "unname", "export", "reveal", "split-sheet", "changelog", "build-pack"]);
 
 async function act(name, body, button) {
   if (button) button.disabled = true;

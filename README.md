@@ -93,6 +93,8 @@ Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · 
 
 The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
 
+**Build pack**, above the sounds, puts the starred sounds in a zip in Downloads, sorted into folders by kind (Kicks, 808s, Snares, Claps, Hats, Percs, Melodic, Loops, and Other for the rest), ready to sell or send. It holds `Contents.txt`, every sound with its tempo, key or note, and loudness, and the kit's changelog when every sound in it is saved. Sounds are copied as they are; two with the same file name are kept apart by the folder they came from. `kit pack` does the same for the starred sounds, `kit pack Kicks Loops` for folders, with `--name` for the pack's name.
+
 **Changelog**, beside the export button, saves a text file of what each version added, renamed, changed and removed, newest first, with who saved it and when, for the people you send the pack to. On a version compared with an older one (see **Compared with** below), it covers only what changed since then: "everything new since the version you bought". Every exported zip carries the full changelog as `Changes.txt` (unless the kit has its own file by that name, which is kept). `kit changelog` prints it, `kit changelog --since v4` only the newer versions, and `-o <folder>` writes the file.
 
 **Split sheet**, beside the export button, saves a PDF for a version: each person's sounds (credited to whoever first added the audio, even after renames), a share for each person by number of sounds, and a line for each to write the agreed share and sign. When a beat made with the kit is placed, that is the record of who made what. The PDF is written by Kit's own small PDF writer (`pdf.py`), in Helvetica, and the same version always gives the same file.
@@ -181,6 +183,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
+| `kit pack [paths...] [--name N] [-o folder]` | Build a zip of the starred sounds (or these folders), sorted into folders by kind, with a contents list |
 | `kit changelog [version] [--since v] [-o folder]` | What each version added, renamed, changed and removed (also in every exported zip) |
 | `kit rename [--yes]` | Name sounds called "Sample 0042" after what Kit heard (kind, tempo and key, or note); shows first |
 | `kit level [paths...] [--to LUFS]` | Turn sounds up or down to the middle of their kind, or to one loudness, never past -1 dBFS |
@@ -294,6 +297,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
 | `src/kit/loudness.py` | Loudness in LUFS (BS.1770) and peaks (`kit loudness`) |
 | `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`), and saving changed sounds safely |
+| `src/kit/packs.py` | Building a pack from chosen sounds, sorted by kind (`kit pack`) |
 | `src/kit/changelog.py` | The changelog of a kit's versions (`kit changelog`, and Changes.txt in exports) |
 | `src/kit/rename.py` | Naming sounds after what Kit heard in them (`kit rename`) |
 | `src/kit/level.py` | Turning sounds to a loudness without clipping (`kit level`) |
@@ -345,6 +349,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Levelling sounds to their kind or to a set loudness (`kit level`, and Level in the app) | done |
 | Naming sounds after what Kit heard (`kit rename`, and Name by sound in the app) | done |
 | A changelog per release, in every exported zip (`kit changelog`) | done |
+| Building a pack from starred sounds, sorted by kind (`kit pack`, and Build pack in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |
