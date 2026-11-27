@@ -565,6 +565,13 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "chop":
+            from .chop import chop
+
+            path, name = self.locate({"path": body.get("path") or ""})
+            files = chop(path, name)
+            return {"message": f"Cut {name} into {len(files)} pieces, in "
+                               f"{files[0].parent.relative_to(repo.folder).as_posix()}/. Save a version to keep them."}
         if action == "split-sheet":
             from .splits import write_split_sheet
 

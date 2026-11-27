@@ -360,6 +360,22 @@ def cmd_kinds(args) -> None:
         print(f"{unknown} file(s) of no kind (not audio Kit can read, or silent).")
 
 
+def cmd_chop(args) -> None:
+    from .chop import chop
+
+    repo = Repo.find()
+    path = Path(args.path).resolve()
+    try:
+        name = path.relative_to(repo.folder).as_posix()
+    except ValueError:
+        raise KitError(f"{args.path} is not inside this kit") from None
+    if not path.is_file():
+        raise KitError(f"there is no sound at {args.path}")
+    files = chop(path, name, min_gap=args.gap / 1000)
+    print(f"Cut {name} into {len(files)} pieces, in {files[0].parent.relative_to(repo.folder).as_posix()}/")
+    print("They are new sounds in the kit: save a version to keep them.")
+
+
 def cmd_ui(args) -> None:
     from .app import serve  # imported here so the other commands start instantly
 
@@ -492,6 +508,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("version", nargs="?", help="default: the latest version")
     p.add_argument("-o", "--output", help="the folder to put the zip in (default: next to the kit)")
     p.set_defaults(run=cmd_export)
+
+    p = sub.add_parser("chop", help="cut a loop into one-shots, one file per hit")
+    p.add_argument("path", help="the loop, e.g. Loops/Groove.wav")
+    p.add_argument("--gap", type=float, default=60, help="hits closer than this many ms count as one (default 60)")
+    p.set_defaults(run=cmd_chop)
 
     p = sub.add_parser("kinds", help="sort the sounds into kicks, 808s, snares, claps, hats, percs, melodic and loops")
     p.add_argument("kind", nargs="?", help="list only this kind, e.g. 808")

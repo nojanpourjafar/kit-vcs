@@ -262,6 +262,11 @@ function soundRow(sound, live) {
   row.append(waveBox(row, sound));
   if (live) {
     row.dataset.starred = sound.starred ? "1" : "";
+    if (sound.kind === "Loop" || sound.bpm) {
+      // A loop can be cut into one-shots: a new folder beside it, one file per hit.
+      row.append(h("button", {class: "pen", title: "Chop: cut this loop into one-shots, one file per hit",
+        "aria-label": `Chop ${sound.path}`, onclick: (event) => act("chop", {path: sound.path}, event.currentTarget)}, "✂"));
+    }
     row.append(h("button", {class: "pen", title: "Write a note on this sound (N). Notes are shared when you push.",
       "aria-label": `Note on ${sound.path}`, onclick: () => editNote(row, sound)}, "✎"));
     row.append(h("button", {class: sound.starred ? "star on" : "star", "aria-pressed": String(Boolean(sound.starred)),
