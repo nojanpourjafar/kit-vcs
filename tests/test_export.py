@@ -33,6 +33,7 @@ def test_a_version_becomes_one_tidy_folder(saved, tmp_path):
         "kit v1/Hats/hat_01.wav": b"TSS" * 100,
         "kit v1/Kicks/kick_01.wav": b"KICK" * 100,
         "kit v1/Kicks/kick_02.wav": b"BOOM" * 100,
+        "kit v1/Changes.txt": contents(out)["kit v1/Changes.txt"],  # the changelog: see test_changelog.py
     }                                                         # only v1's sounds, never .kit
 
 

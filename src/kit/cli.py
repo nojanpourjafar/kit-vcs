@@ -300,6 +300,16 @@ def cmd_export(args) -> None:
     print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
 
 
+def cmd_changelog(args) -> None:
+    from .changelog import changelog, write_changelog
+
+    repo = Repo.find()
+    if args.output:
+        print(f"Wrote {write_changelog(repo, args.version or 'latest', Path(args.output), args.since)}")
+    else:
+        print(changelog(repo, args.version or "latest", args.since), end="")
+
+
 def cmd_splits(args) -> None:
     from .splits import write_split_sheet
 
@@ -713,6 +723,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("kits", nargs="*", help="other kits or folders to look through too")
     p.add_argument("-n", "--count", type=int, default=10, help="how many to list (default: 10)")
     p.set_defaults(run=cmd_like)
+
+    p = sub.add_parser("changelog", help="what each version added, renamed, changed and removed")
+    p.add_argument("version", nargs="?", help="up to this version (default: the latest)")
+    p.add_argument("--since", help="only the versions after this one, e.g. the one you last sent")
+    p.add_argument("-o", "--output", help="write it as a .txt file into this folder instead of printing it")
+    p.set_defaults(run=cmd_changelog)
 
     p = sub.add_parser("splits", help="save a split sheet (PDF): who added which sounds, with a share for each")
     p.add_argument("version", nargs="?", help="default: the latest version")

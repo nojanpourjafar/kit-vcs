@@ -1,7 +1,10 @@
 """Export a version as a plain zip, for people who do not use Kit.
 
 The zip holds one folder, named like "Dark Trap Kit v3", with that version's
-sounds inside, so unzipping gives a tidy folder rather than files everywhere.
+sounds inside, so unzipping gives a tidy folder rather than files everywhere,
+and "Changes.txt": what every version up to this one added, renamed, changed
+and removed (see changelog.py). A sound already called Changes.txt keeps its
+place, and the changelog is left out.
 
 The same version always exports to exactly the same bytes: the entries are in
 a fixed order and carry the version's own date. Anyone can check that a zip is
@@ -61,5 +64,11 @@ def export(repo: Repo, ref: str, folder: Path) -> tuple[Path, int, int]:
             with repo.store.file_for(entry["hash"]).open("rb") as source, \
                     archive.open(info, "w", force_zip64=entry["size"] >= 2**31) as target:
                 shutil.copyfileobj(source, target, 1024 * 1024)
+        if "Changes.txt" not in manifest:
+            from .changelog import changelog
+
+            info = zipfile.ZipInfo(f"{name}/Changes.txt", date_time=stamp)
+            info.create_system, info.external_attr, info.compress_type = 3, 0o644 << 16, zipfile.ZIP_STORED
+            archive.writestr(info, changelog(repo, commit_id).encode("utf-8"))
     os.replace(partial, out)
     return out, len(manifest), sum(entry["size"] for entry in manifest.values())

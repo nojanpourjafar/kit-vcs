@@ -651,6 +651,15 @@ class App:
             except OSError:
                 pass  # the zip is there either way; the message says where
             return {"message": f"Saved {out.name} ({sounds} sounds) in {out.parent.name}."}
+        if action == "changelog":
+            from .changelog import write_changelog
+
+            out = write_changelog(repo, body.get("version") or "latest", downloads_folder(), body.get("since"))
+            try:
+                reveal(out)
+            except OSError:
+                pass
+            return {"message": f"Saved {out.name} in {out.parent.name}. Exported zips include it as Changes.txt."}
         if action == "chop":
             from .chop import chop
 
