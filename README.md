@@ -69,6 +69,8 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 `kit ui` works on one folder. The **All kits** button at the top leads to a home screen that lists the kits opened before, so you can switch between them. The × beside a kit takes it off the list; the folder itself is not touched.
 
+From the home screen, **Find sounds that are in more than one place** looks across every kit on the list for the same sound, even renamed, re-bounced or converted (as `kit dupes` does, below), and shows each group with every place it is in: play buttons, waveforms, sizes, and ↗ to show each file in Finder or Explorer. Kit deletes nothing there; which copy to keep is yours to decide.
+
 A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`, melodic loops whose names give no key get one from the audio, shown as `≈F# min` and searchable like a key in a name, and one-shots whose names give no key get the note they play, shown as `≈F#`, so an 808 can be matched to the key of a song; see below for how reliable both are. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, S stars it, and Enter in the search box plays the first match.
 
 Beside that, pick the song's key and click **Fits** to see only what works with the song: loops at its tempo (or half or double, within 3%), in its key or one that mixes with it (the same key, its relative major or minor, or a fifth up or down: the Camelot wheel DJs use), and one-shots whose note is in the key's scale, so an 808 in A fits a song in F# minor and one in F does not. What Kit does not know about a sound does not count against it: a hat has no key. Sounds are normally listened to as they scroll into view; Fits listens to the rest, three at a time.
@@ -341,7 +343,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Note of one-shots from their audio | done |
 | Key of melodic loops from their audio | done |
 | Split sheets (PDF) from credits | done |
-| Finding the same sound across kits (`kit dupes`) | done; in the app next |
+| Finding the same sound across kits (`kit dupes`, and on the app's home screen) | done |
 | "More like this": the closest sounds across kits (`kit like`, and ≈ in the app) | done |
 | Problem finder: clipping, late starts, clicks, silence (`kit check`, and ⚠ in the app) | done |
 | Fixing late starts and clicks in one click (`kit fix`, and Fix in the app) | done |

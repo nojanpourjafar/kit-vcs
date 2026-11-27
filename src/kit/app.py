@@ -334,6 +334,32 @@ class App:
             sound["level"] = loudness.apart(level["lufs"], middles.get(known.get(sound["path"]))) if level else None
             sound["middle"] = middles.get(known.get(sound["path"]))
 
+    def duplicates(self) -> dict:
+        """Sounds that are in more than one place across every kit opened before (and the open one)."""
+        from .fingerprint import find_duplicates
+
+        folders = [Path(p) for p in self._recent_paths() if Path(p).is_dir()]
+        if self.folder and all(Path(p).resolve() != self.folder.resolve() for p in folders):
+            folders.insert(0, self.folder)
+        if not folders:
+            raise KitError("open a kit first: duplicates are looked for across the kits you have opened")
+
+        def progress(done: int, total: int) -> None:
+            self.progress = {"files": done, "files_total": total, "bytes": 0, "bytes_total": 0}
+
+        groups = find_duplicates(folders, progress=progress)
+        return {
+            "kits": len(folders),
+            "extra": sum(group.extra_bytes for group in groups),
+            "groups": [{
+                "exact": group.exact,
+                "extra": group.extra_bytes,
+                "places": [{"kit": place.kit, "folder": place.folder, "path": place.path, "size": place.size,
+                            "source": f"kit={_quote(place.folder)}&path={_quote(place.path)}"}
+                           for place in group.places],
+            } for group in groups],
+        }
+
     def rename_plan(self) -> list[dict]:
         """New names for the sounds whose names say nothing, from what Kit heard. Nothing is renamed here."""
         from .rename import suggest
@@ -596,7 +622,9 @@ class App:
         if self.folder is None:
             raise KitError("open a kit folder first")
         if action == "reveal":
-            path, _ = self.locate({"path": body.get("path", "")})  # refuses .kit and paths outside the folder
+            # Refuses .kit and paths outside the folder; `kit` (from Duplicates) only for a kit opened before.
+            query = {"path": body.get("path", ""), **({"kit": body["kit"]} if body.get("kit") else {})}
+            path, _ = self.locate(query)
             try:
                 reveal(path)
             except OSError as err:  # e.g. no file manager installed
@@ -821,6 +849,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"checked": self.app.update_checked, "version": self.app.update})
         if url.path == "/api/tempo":
             return self._run(lambda: self.app.listen(query), lock=False)
+        if url.path == "/api/dupes":
+            # No lock: the first look at a big collection listens to every sound.
+            return self._run(self.app.duplicates, lock=False)
         if url.path == "/api/rename-preview":
             # No lock: listening to every unnamed sound can take a while (the folder is read under it).
             return self._run(lambda: {"plan": self.app.rename_plan()}, lock=False)

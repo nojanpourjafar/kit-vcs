@@ -102,6 +102,7 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .sounds { display: grid; gap: 8px; }
 /* "More like this": the closest sounds, listed under the one they are like. */
 .like { padding: 2px 0 6px 26px; border-left: 2px solid var(--line); margin-left: 12px; }
+.dupe-group { margin-top: 18px; } .dupe-group h2 { text-transform: none; letter-spacing: 0; }
 .rename-panel .card { margin-bottom: 12px; }
 .renames { margin: 8px 0 0; padding-left: 18px; font-size: 14px; max-height: 260px; overflow: auto; }
 .renames li { overflow-wrap: anywhere; }
@@ -1099,6 +1100,11 @@ function renderHome() {
       act("open", {folder: path.value}, event.submitter);
     }}, path, h("button", {class: "primary"}, "Open folder")));
   }
+  if (state.recent.length) {
+    box.append(h("p", {}, h("button", {class: "link", onclick: showDupes,
+      title: "Sounds that are in more than one of your kits, even renamed, re-bounced or converted"},
+      `Find sounds that are in more than one place, across your ${plural(state.recent.length, "kit")}`)));
+  }
   $("#main").replaceChildren(box, sharedKitCard(),
     h("p", {class: "report-link"}, h("button", {class: "link", onclick: showReport}, "Report a problem")));
 }
@@ -1605,6 +1611,51 @@ async function showReport() {
     h("p", {class: "muted"}, "Copy this and send it with what you were doing. Nothing is sent from Kit itself. " +
       "It may include the folder paths of your kits."),
     box, h("div", {class: "row"}, copy, h("button", {onclick: render}, "Back"))));
+}
+
+// The same sound in several places across your kits: each group with every
+// place it is in, playable, and ↗ to show it in Finder or Explorer. Kit deletes
+// nothing here; which copy to keep is the producer's call.
+async function showDupes() {
+  const status = h("p", {class: "muted"}, "Listening to your kits… the first time takes a while.");
+  $("#main").replaceChildren(h("section", {class: "card"}, h("h1", {}, "Sounds in more than one place"), status,
+    h("div", {class: "row"}, h("button", {onclick: render}, "Back"))));
+  const timer = setInterval(async () => {
+    try {
+      const p = await api("/api/progress");
+      if (p.files_total) status.textContent = `Listening: ${p.files} of ${p.files_total} sounds`;
+    } catch (error) { /* the answer below will say what went wrong */ }
+  }, 500);
+  let found;
+  try {
+    found = await api("/api/dupes");
+  } catch (error) {
+    status.textContent = error.message;
+    return;
+  } finally {
+    clearInterval(timer);
+  }
+  if (!status.isConnected) return;  // the person went back meanwhile
+  const groups = found.groups.map((group) => {
+    const rows = group.places.map((place) => {
+      const row = soundRow({path: found.kits > 1 ? `${place.kit} / ${place.path}` : place.path,
+        label: size(place.size), source: place.source}, false);
+      row.onclick = null;
+      row.append(h("button", {class: "reveal", title: "Show in the file browser", "aria-label": `Show ${place.path}`,
+        // Straight to the server, not act(): act redraws the page, which would leave this screen.
+        onclick: () => api("/api/reveal", {path: place.path, kit: place.folder}).catch((error) => toast(error.message, true))}, "↗"));
+      return row;
+    });
+    return h("section", {class: "dupe-group"},
+      h("h2", {}, group.exact ? `The same file, ${group.places.length} places`
+        : `The same sound in different files, ${group.places.length} places`,
+        h("span", {class: "muted"}, ` · ${size(group.extra)} in copies`)),
+      h("ul", {class: "sounds"}, rows));
+  });
+  status.textContent = found.groups.length
+    ? `${plural(found.groups.length, "sound")} ${found.groups.length === 1 ? "is" : "are"} in more than one place across ${plural(found.kits, "kit")}; the copies take ${size(found.extra)}. Kit deletes nothing: play them, then remove the copies you do not want in Finder or Explorer.`
+    : `No sound is in more than one place across ${plural(found.kits, "kit")}.`;
+  $("#main").append(...groups);
 }
 
 // Errors in this page's own script reach the log too, so a report includes
