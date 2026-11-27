@@ -337,7 +337,10 @@ function levelText(sound) {
   if (sound.lufs === null || sound.lufs === undefined) return h("span", {class: "level"});
   const kind = sound.kind === "808" ? "808s" : sound.kind === "Melodic" ? "melodic sounds" : `${(sound.kind || "").toLowerCase()}s`;
   return h("span", {class: sound.level ? "level far" : "level", title: `Loudness ${sound.lufs} LUFS, peak ${sound.peak} dBFS`},
-    ` · ${sound.lufs.toFixed(1)} LUFS`, sound.level ? ` (${sound.level} than the other ${kind})` : "");
+    ` · ${sound.lufs.toFixed(1)} LUFS`, sound.level ? ` (${sound.level} than the other ${kind})` : "",
+    sound.level ? h("button", {class: "link fix", "aria-label": `Level ${sound.path}`,
+      title: `Turn it ${sound.level === "much louder" ? "down" : "up"} to ${sound.middle.toFixed(1)} LUFS, the middle of the other ${kind}. Never past -1 dBFS, so it cannot clip.`,
+      onclick: (event) => { event.stopPropagation(); act("level", {path: sound.path}, event.currentTarget); }}, "Level") : "");
 }
 
 // "⚠ Clips", or "⚠ 2 problems": what Kit found wrong with a sound; the details are in the tooltip.
@@ -615,6 +618,11 @@ function kindsBar(sounds, list, none, live) {
         onclick: (event) => act("fix", {paths: fixable}, event.currentTarget)}, `Fix all ${fixable.length}`));
     }
   }
+  const far = live ? sounds.filter((sound) => sound.level).map((sound) => sound.path) : [];
+  if (far.length > 1) {
+    bar.append(h("button", {class: "chip", title: "Turn every sound far from its kind to the middle of that kind",
+      onclick: (event) => act("level", {paths: far}, event.currentTarget)}, `Level all ${far.length}`));
+  }
   if (live && state.sorting) {
     const note = h("span", {class: "muted small"}, "Sorting and checking sounds by listening…");
     bar.append(note);
@@ -653,7 +661,7 @@ async function watchSorting(sounds, list, none, bar) {
     if (badge) row.querySelector(":scope > .what .name").append(badge);
     const fresher = fresh.sounds.find((x) => x.path === row.sound.path);
     if (fresher) {
-      Object.assign(row.sound, {lufs: fresher.lufs, peak: fresher.peak, level: fresher.level});
+      Object.assign(row.sound, {lufs: fresher.lufs, peak: fresher.peak, level: fresher.level, middle: fresher.middle});
       row.querySelector(":scope > .what .level").replaceWith(levelText(row.sound));
     }
   }

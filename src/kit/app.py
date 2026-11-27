@@ -324,16 +324,13 @@ class App:
         """Each sound's loudness and peak, and whether it is far louder or quieter than the
         other sounds of its kind (a hat is meant to be quieter than an 808)."""
         measured = loudness.known(repo, working)
-        by_kind: dict[str, list[float]] = {}
-        for path, level in measured.items():
-            if known.get(path):
-                by_kind.setdefault(known[path], []).append(level["lufs"])
-        middles = {kind: loudness.middle(levels) for kind, levels in by_kind.items() if len(levels) >= 3}
+        middles = loudness.middles(measured, known)
         for sound in sounds:
             level = measured.get(sound["path"])
             sound["lufs"] = level["lufs"] if level else None
             sound["peak"] = level["peak"] if level else None
             sound["level"] = loudness.apart(level["lufs"], middles.get(known.get(sound["path"]))) if level else None
+            sound["middle"] = middles.get(known.get(sound["path"]))
 
     def _fix(self, repo: Repo, paths: list[str]) -> list[tuple[Path, list[str]]]:
         """Check each sound again (the file may have changed) and fix what can be fixed."""
@@ -658,6 +655,28 @@ class App:
                 return {"message": f"Fixed {Path(paths[0]).name}{where}: {' and '.join(done)}. "
                                    + ("Before plays the original." if not where else "Save a version to keep it.")}
             return {"message": f"Fixed {len(fixed)} sounds. Save a version to keep the fixes; Before plays the originals."}
+        if action == "level":
+            from .level import describe, level
+
+            paths = body.get("paths") or [body.get("path") or ""]
+            working = repo.working()
+            known = kinds.known(repo, working)
+            middles = loudness.middles(loudness.known(repo, working), known)
+            lines = []
+            for path in paths:
+                self.locate({"path": path})  # the sound must exist
+                target = body.get("to")
+                if target is None:
+                    target = middles.get(known.get(path))
+                    if target is None:
+                        raise KitError(f"there are not 3 measured {known.get(path) or 'sounds'} of this kind "
+                                       f"to level {Path(path).name} to")
+                out, gain, result = level(repo, path, float(target))
+                lines.append(describe(path, out, gain, result, float(target)))
+            self.sort_soon()  # measure the levelled files
+            if len(lines) == 1:
+                return {"message": lines[0] + ". Before plays the original." if "Turned" in lines[0] else lines[0] + "."}
+            return {"message": f"Levelled {len(paths)} sounds to the middle of their kinds. Before plays the originals."}
         if action == "split-sheet":
             from .splits import write_split_sheet
 

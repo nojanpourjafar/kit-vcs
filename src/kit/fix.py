@@ -73,6 +73,37 @@ def repair(values: list, rate: int, channels: int, width: int, is_float: bool, f
     return values
 
 
+def read(repo, path: str, verb: str) -> tuple[list, int, int, int, bool]:
+    """A sound's samples as stored (all channels together), with its rate, channels, width and float flag."""
+    if not can_read(path):
+        raise KitError(f"Kit can only {verb} WAV, AIFF and FLAC files, not {path}")
+    try:
+        with open_wav(repo.folder / path) as wav:
+            rate, channels, width, is_float = wav.rate, wav.channels, wav.width, wav.is_float
+            raw = wav.readframes(wav.frames)
+    except _WAVE_ERRORS as err:
+        raise KitError(f"cannot read {path}: {err}") from None
+    return _decode(raw, width, is_float), rate, channels, width, is_float
+
+
+def save(repo, path: str, word: str, values: list, rate: int, channels: int, width: int, is_float: bool) -> Path:
+    """Write changed samples: over the sound if a version keeps the original, else beside it as "<name> <word>.wav"."""
+    source = repo.folder / path
+    entry = repo.working().get(path)
+    if entry is not None and repo.store.has(entry["hash"]) and path.lower().endswith(".wav"):
+        out = source
+    else:
+        out = source.with_name(f"{source.stem} {word}.wav")
+        number = 2
+        while out.exists():
+            out = source.with_name(f"{source.stem} {word} {number}.wav")
+            number += 1
+    tmp = out.with_name(out.name + ".tmp")
+    _write_wav(tmp, _encode(values, width, is_float), rate, channels, width, is_float)
+    tmp.replace(out)
+    return out
+
+
 def fix(repo, path: str, found: list[dict], loop: bool = False) -> tuple[Path, list[str]]:
     """Fix the sound at `path` in the kit. Returns the file written and what was fixed, in words.
 
@@ -82,30 +113,9 @@ def fix(repo, path: str, found: list[dict], loop: bool = False) -> tuple[Path, l
     if not kinds_found:
         raise KitError("there is nothing Kit can fix in " + path
                        + (": clipping cannot be undone" if any(p["kind"] == "clipping" for p in found) else ""))
-    source = repo.folder / path
-    if not can_read(path):
-        raise KitError(f"Kit can only fix WAV, AIFF and FLAC files, not {path}")
-    try:
-        with open_wav(source) as wav:
-            rate, channels, width, is_float = wav.rate, wav.channels, wav.width, wav.is_float
-            raw = wav.readframes(wav.frames)
-    except _WAVE_ERRORS as err:
-        raise KitError(f"cannot read {path}: {err}") from None
-    values = repair(_decode(raw, width, is_float), rate, channels, width, is_float, kinds_found, loop)
-
-    entry = repo.working().get(path)
-    saved = entry is not None and repo.store.has(entry["hash"]) and path.lower().endswith(".wav")
-    if saved:
-        out = source
-    else:
-        out = source.with_name(f"{source.stem} fixed.wav")
-        number = 2
-        while out.exists():
-            out = source.with_name(f"{source.stem} fixed {number}.wav")
-            number += 1
-    tmp = out.with_name(out.name + ".tmp")
-    _write_wav(tmp, _encode(values, width, is_float), rate, channels, width, is_float)
-    tmp.replace(out)
+    values, rate, channels, width, is_float = read(repo, path, "fix")
+    values = repair(values, rate, channels, width, is_float, kinds_found, loop)
+    out = save(repo, path, "fixed", values, rate, channels, width, is_float)
     done = []
     if "late" in kinds_found and not loop:
         done.append("trimmed the silence at the start")

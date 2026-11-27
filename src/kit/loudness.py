@@ -156,6 +156,15 @@ def middle(levels: list[float]) -> float | None:
     return ordered[half] if len(ordered) % 2 else (ordered[half - 1] + ordered[half]) / 2
 
 
+def middles(measured: dict[str, dict], kind_of: dict[str, str]) -> dict[str, float]:
+    """{kind: middle loudness} for each kind with at least 3 measured sounds."""
+    by_kind: dict[str, list[float]] = {}
+    for path, level in measured.items():
+        if kind_of.get(path):
+            by_kind.setdefault(kind_of[path], []).append(level["lufs"])
+    return {kind: middle(levels) for kind, levels in by_kind.items() if len(levels) >= 3}
+
+
 def apart(lufs: float, centre: float | None) -> str | None:
     """"much louder" or "much quieter" than the kit's middle, or None."""
     if centre is None:

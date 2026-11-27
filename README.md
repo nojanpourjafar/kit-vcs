@@ -83,6 +83,8 @@ Sounds with something wrong get a ⚠ badge (hover it for the details) and **⚠
 
 Each sound shows its loudness in LUFS, the measure streaming services and mastering engineers use (Spotify plays songs at about -14), with its peak in the tooltip. A sound 6 LU or more from the middle of the other sounds of its kind is marked, like "-26.7 LUFS (much quieter than the other kicks)": a hat is meant to be quieter than an 808, so sounds are only compared with their own kind, and only when there are at least three of it. Loudness is measured in the background with the checks, once per sound. `kit loudness` lists every sound by kind, loudest first.
 
+**Level**, beside a marked sound, turns it up or down to the middle of its kind (**Level all** does every marked sound). The whole sound is turned by one amount, so only its loudness changes, and turning up stops where the loudest sample would pass -1 dBFS, so it can never clip; when that stops it short, Kit says by how much. It is saved the same way as Fix: in place for a saved sound (Before plays the original), beside it as "Kick levelled.wav" otherwise. `kit level` does the same for the marked sounds, `kit level Kicks` for a folder, and `kit level --to -14` sets every sound to one loudness.
+
 **Fix**, beside the badge, trims a late start (keeping 1 ms before the sound) and fades out a click (the last 4 ms of a one-shot; the first and last 3 ms of a loop, so it keeps its length and stays in time). **Fix all** does every sound that can be fixed. A sound saved in a version is fixed in place, since Kit already keeps the original and **Before** plays it; a sound not saved yet, or one that is not a WAV, is written beside it as "Kick fixed.wav". Clipping cannot be fixed (the tops of the wave are gone), so it stays a warning. `kit fix` does the same in the terminal. On 622 generated sounds of seven kinds with a late start, a click at the end, or both, every fixed copy passed `kit check`.
 
 Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · Melodic · Loop, each with a count) show one kind at a time, together with the search and ★ Starred. Kinds come from names, and sounds whose names say nothing are listened to in the background when a kit is opened or saved (see `kit kinds` below); their buttons fill in when that is done.
@@ -175,6 +177,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
+| `kit level [paths...] [--to LUFS]` | Turn sounds up or down to the middle of their kind, or to one loudness, never past -1 dBFS |
 | `kit fix [paths...]` | Trim late starts and fade out clicks (saved sounds in place, others as "... fixed.wav") |
 | `kit like <sound> [kits...]` | List the sounds most like one sound, here and in other kits (`-n` for how many) |
 | `kit splits [v2]` | Save a split sheet (PDF): who added which sounds, a share for each person, and lines to sign |
@@ -284,7 +287,8 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/kinds.py` | The kind of each sound, from its name or its sound (`kit kinds`) |
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
 | `src/kit/loudness.py` | Loudness in LUFS (BS.1770) and peaks (`kit loudness`) |
-| `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`) |
+| `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`), and saving changed sounds safely |
+| `src/kit/level.py` | Turning sounds to a loudness without clipping (`kit level`) |
 | `src/kit/fingerprint.py` | Sound fingerprints: the same sound in several kits (`kit dupes`), and the sounds most like one (`kit like`) |
 | `src/kit/splits.py` | The split sheet for a version (`kit splits`) |
 | `src/kit/pdf.py` | A very small PDF writer: pages of text and lines |
@@ -329,7 +333,8 @@ The merge compares both sides with the last version they share. A file changed o
 | "More like this": the closest sounds across kits (`kit like`, and ≈ in the app) | done |
 | Problem finder: clipping, late starts, clicks, silence (`kit check`, and ⚠ in the app) | done |
 | Fixing late starts and clicks in one click (`kit fix`, and Fix in the app) | done |
-| Loudness meter (LUFS), with sounds far from the rest of their kind marked | done; levelling them next |
+| Loudness meter (LUFS), with sounds far from the rest of their kind marked | done |
+| Levelling sounds to their kind or to a set loudness (`kit level`, and Level in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |

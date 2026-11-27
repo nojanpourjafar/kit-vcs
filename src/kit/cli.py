@@ -440,6 +440,36 @@ def cmd_loudness(args) -> None:
             print(f"  {level['lufs']:6.1f} LUFS  peak {level['peak']:5.1f} dB  {path}" + (f"  <- {far}" if far else ""))
 
 
+def cmd_level(args) -> None:
+    from .kinds import sort_kit
+    from .level import describe, level
+    from .loudness import apart, measure_kit, middles
+
+    repo = Repo.find()
+    working = repo.working()
+    kind_of = {path: kind["kind"] for path, kind in sort_kit(repo, working=working).items()}
+    measured = measure_kit(repo, working=working)
+    centres = middles(measured, kind_of)
+    if args.paths:
+        wanted = [p.rstrip("/") for p in args.paths]
+        chosen = [path for path in measured if any(path == w or path.startswith(w + "/") for w in wanted)]
+    elif args.to is not None:
+        chosen = list(measured)
+    else:  # only the sounds far from the rest of their kind
+        chosen = [path for path, lv in measured.items() if apart(lv["lufs"], centres.get(kind_of.get(path)))]
+    if not chosen:
+        print("Nothing to level." if args.paths or args.to is not None
+              else "No sound is far from the rest of its kind. (`kit level --to -14` sets every sound to one level.)")
+        return
+    for path in sorted(chosen):
+        target = args.to if args.to is not None else centres.get(kind_of.get(path))
+        if target is None:
+            print(f"{path}: skipped, there are not 3 sounds of its kind to compare it with")
+            continue
+        print(describe(path, *level(repo, path, target), target))
+    print("Save a version to keep the changes.")
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -638,6 +668,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("loudness", help="how loud each sound is (LUFS), grouped by kind, with the ones far off marked")
     p.set_defaults(run=cmd_loudness)
+
+    p = sub.add_parser("level", help="turn sounds up or down to the middle of their kind (or --to a LUFS level)")
+    p.add_argument("paths", nargs="*", help="these sounds or folders (default: only those far from their kind)")
+    p.add_argument("--to", type=float, help="a loudness for all of them, in LUFS, e.g. -14")
+    p.set_defaults(run=cmd_level)
 
     p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
     p.add_argument("sound", help="a sound in this kit")
