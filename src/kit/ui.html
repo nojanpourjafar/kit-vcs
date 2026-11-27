@@ -102,6 +102,9 @@ main { display: grid; gap: 24px; align-content: start; min-width: 0; }
 .sounds { display: grid; gap: 8px; }
 /* "More like this": the closest sounds, listed under the one they are like. */
 .like { padding: 2px 0 6px 26px; border-left: 2px solid var(--line); margin-left: 12px; }
+.rename-panel .card { margin-bottom: 12px; }
+.renames { margin: 8px 0 0; padding-left: 18px; font-size: 14px; max-height: 260px; overflow: auto; }
+.renames li { overflow-wrap: anywhere; }
 .like .sound { padding: 6px 12px; }
 .sound { display: flex; align-items: center; gap: 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
@@ -356,6 +359,35 @@ function problemBadge(sound) {
     "Fix"));
 }
 
+// Show the new names first; nothing is renamed until "Rename" is clicked.
+async function renamePanel(panel, button) {
+  if (panel.childElementCount) return panel.replaceChildren();
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "Listening…";
+  try {
+    const {plan} = await api("/api/rename-preview");
+    if (!plan.length) {
+      panel.replaceChildren(h("p", {class: "muted"}, "Every sound's name already says what it is."));
+      return;
+    }
+    const base = (path) => path.split("/").pop();
+    panel.replaceChildren(h("div", {class: "card"},
+      h("p", {}, `${plan.length} sound${plan.length === 1 ? "" : "s"} named after what Kit heard. Tempo, key and note are estimates; check a few by ear.`),
+      h("ul", {class: "renames"}, plan.map((move) => h("li", {}, h("span", {class: "muted"}, move.from), " → ", h("b", {}, base(move.to))))),
+      h("div", {class: "row"},
+        h("button", {class: "primary", onclick: async (event) => {
+          if (await act("rename-heard", {plan}, event.currentTarget)) panel.replaceChildren();
+        }}, `Rename ${plan.length}`),
+        h("button", {onclick: () => panel.replaceChildren()}, "Cancel"))));
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
 // In the desktop app (macOS and Windows), a sound can be dragged out of the window
 // into FL Studio. A web page cannot hand a real file to another program, so once the
 // mouse has moved a few pixels with the button held down, the page asks Python
@@ -408,7 +440,13 @@ function soundSection(title, sounds, live = false) {
   const bar = kindsBar(sounds, list, none, live);
   const filters = h("div", {class: "filters"}, bar, songBox(list, none));
   filter(list, none);
-  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), filters, list, none);
+  const panel = h("div", {class: "rename-panel"});
+  const unnamed = live ? sounds.filter((sound) => sound.unnamed).length : 0;
+  if (unnamed) {
+    tools.prepend(h("button", {class: "only", title: "Name sounds called things like \"Sample 0042\" after what Kit heard: kind, tempo and key, or note",
+      onclick: (event) => renamePanel(panel, event.currentTarget)}, `Name by sound (${unnamed})`));
+  }
+  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), filters, panel, list, none);
 }
 
 // "Play loops at [140] BPM": every loop whose tempo Kit knows (from its name, or

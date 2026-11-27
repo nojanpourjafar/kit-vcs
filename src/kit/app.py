@@ -205,6 +205,8 @@ class App:
             sound["starred"] = sound["path"] in stars
             sound["note"] = notes.get(sound["path"])
             sound["kind"] = known.get(sound["path"])
+            # Its kind was heard, not read from its name: "Name by sound" can name it.
+            sound["unnamed"] = bool(sound["kind"]) and kinds.kind_from_name(sound["path"]) is None
             sound["problems"] = [problem["text"] for problem in found.get(sound["path"], [])]
             sound["fixable"] = any(problem["kind"] in ("late", "click") for problem in found.get(sound["path"], []))
         self._levels(repo, working, known, sounds)
@@ -331,6 +333,17 @@ class App:
             sound["peak"] = level["peak"] if level else None
             sound["level"] = loudness.apart(level["lufs"], middles.get(known.get(sound["path"]))) if level else None
             sound["middle"] = middles.get(known.get(sound["path"]))
+
+    def rename_plan(self) -> list[dict]:
+        """New names for the sounds whose names say nothing, from what Kit heard. Nothing is renamed here."""
+        from .rename import suggest
+
+        repo = self.repo()
+        with self.lock:
+            working = repo.working()
+        sorted_ = kinds.sort_kit(repo, working=working)  # quick for sounds listened to before
+        heard = {path: kind["kind"] for path, kind in sorted_.items() if kind["from"] == "sound"}
+        return suggest(working, heard, lambda path: self.listen({"path": path}))
 
     def _fix(self, repo: Repo, paths: list[str]) -> list[tuple[Path, list[str]]]:
         """Check each sound again (the file may have changed) and fix what can be fixed."""
@@ -655,6 +668,13 @@ class App:
                 return {"message": f"Fixed {Path(paths[0]).name}{where}: {' and '.join(done)}. "
                                    + ("Before plays the original." if not where else "Save a version to keep it.")}
             return {"message": f"Fixed {len(fixed)} sounds. Save a version to keep the fixes; Before plays the originals."}
+        if action == "rename-heard":
+            from .rename import apply
+
+            plan = body.get("plan") or []
+            count = apply(repo.folder, [{"from": str(m["from"]), "to": str(m["to"])} for m in plan])
+            return {"message": f"Renamed {count} sound{'s' if count != 1 else ''}. Save a version to keep the new names;"
+                               " credits follow the sounds."}
         if action == "level":
             from .level import describe, level
 
@@ -781,6 +801,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"checked": self.app.update_checked, "version": self.app.update})
         if url.path == "/api/tempo":
             return self._run(lambda: self.app.listen(query), lock=False)
+        if url.path == "/api/rename-preview":
+            # No lock: listening to every unnamed sound can take a while (the folder is read under it).
+            return self._run(lambda: {"plan": self.app.rename_plan()}, lock=False)
         if url.path == "/api/similar":
             # No lock: making fingerprints for kits not yet listened to takes a while.
             return self._run(lambda: {"sounds": self.app.similar(query)}, lock=False)

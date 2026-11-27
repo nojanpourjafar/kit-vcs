@@ -87,6 +87,8 @@ Each sound shows its loudness in LUFS, the measure streaming services and master
 
 **Fix**, beside the badge, trims a late start (keeping 1 ms before the sound) and fades out a click (the last 4 ms of a one-shot; the first and last 3 ms of a loop, so it keeps its length and stays in time). **Fix all** does every sound that can be fixed. A sound saved in a version is fixed in place, since Kit already keeps the original and **Before** plays it; a sound not saved yet, or one that is not a WAV, is written beside it as "Kick fixed.wav". Clipping cannot be fixed (the tops of the wave are gone), so it stays a warning. `kit fix` does the same in the terminal. On 622 generated sounds of seven kinds with a late start, a click at the end, or both, every fixed copy passed `kit check`.
 
+**Name by sound** (shown when some sounds are called things like "Sample 0042.wav") lists new names from what Kit heard, and renames only when you click **Rename**: "Kick 01.wav", "808 01 F#.wav" (the note it plays), "Loop 01 140bpm F#m.wav" (tempo and key). Only sounds whose names and folders say nothing about their kind are renamed, numbers carry on from the ones already in the folder, and a tempo or key already in a name is kept. The new names use the forms Kit reads back, so the tempo and key show and can be searched. Tempo, key and note are estimates (see below), so check a few by ear. A rename is only a move: saved, it shows as a rename and the sound keeps its credit. `kit rename` shows the same list and `kit rename --yes` renames.
+
 Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · Melodic · Loop, each with a count) show one kind at a time, together with the search and ★ Starred. Kinds come from names, and sounds whose names say nothing are listened to in the background when a kit is opened or saved (see `kit kinds` below); their buttons fill in when that is done.
 
 The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
@@ -177,6 +179,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
+| `kit rename [--yes]` | Name sounds called "Sample 0042" after what Kit heard (kind, tempo and key, or note); shows first |
 | `kit level [paths...] [--to LUFS]` | Turn sounds up or down to the middle of their kind, or to one loudness, never past -1 dBFS |
 | `kit fix [paths...]` | Trim late starts and fade out clicks (saved sounds in place, others as "... fixed.wav") |
 | `kit like <sound> [kits...]` | List the sounds most like one sound, here and in other kits (`-n` for how many) |
@@ -288,6 +291,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
 | `src/kit/loudness.py` | Loudness in LUFS (BS.1770) and peaks (`kit loudness`) |
 | `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`), and saving changed sounds safely |
+| `src/kit/rename.py` | Naming sounds after what Kit heard in them (`kit rename`) |
 | `src/kit/level.py` | Turning sounds to a loudness without clipping (`kit level`) |
 | `src/kit/fingerprint.py` | Sound fingerprints: the same sound in several kits (`kit dupes`), and the sounds most like one (`kit like`) |
 | `src/kit/splits.py` | The split sheet for a version (`kit splits`) |
@@ -335,6 +339,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Fixing late starts and clicks in one click (`kit fix`, and Fix in the app) | done |
 | Loudness meter (LUFS), with sounds far from the rest of their kind marked | done |
 | Levelling sounds to their kind or to a set loudness (`kit level`, and Level in the app) | done |
+| Naming sounds after what Kit heard (`kit rename`, and Name by sound in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |

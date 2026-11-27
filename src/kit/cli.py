@@ -470,6 +470,36 @@ def cmd_level(args) -> None:
     print("Save a version to keep the changes.")
 
 
+def cmd_rename(args) -> None:
+    from .audio import key, note, tempo
+    from .kinds import sort_kit
+    from .rename import apply, suggest
+    from .tags import from_name
+
+    repo = Repo.find()
+    working = repo.working()
+    heard = {path: kind["kind"] for path, kind in sort_kit(repo, working=working).items() if kind["from"] == "sound"}
+
+    def listen(path: str) -> dict:
+        file, named = repo.folder / path, from_name(path)
+        bpm = None if named["bpm"] else tempo(file, path)
+        found_key = None if named["key"] else key(file, path)
+        busy = bpm or named["bpm"] or found_key or named["key"]
+        return {"bpm": bpm, "key": found_key, "note": None if busy else note(file, path)}
+
+    plan = suggest(working, heard, listen)
+    if not plan:
+        print("Every sound's name already says what it is.")
+        return
+    for move in plan:
+        print(f"{move['from']}  ->  {Path(move['to']).name}")
+    if not args.yes:
+        print(f"{len(plan)} sound(s) would be renamed. Run `kit rename --yes` to rename them.")
+        return
+    apply(repo.folder, plan)
+    print(f"Renamed {len(plan)} sound(s). Save a version to keep the new names.")
+
+
 def cmd_kinds(args) -> None:
     from .audio import KINDS
     from .kinds import sort_kit
@@ -673,6 +703,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("paths", nargs="*", help="these sounds or folders (default: only those far from their kind)")
     p.add_argument("--to", type=float, help="a loudness for all of them, in LUFS, e.g. -14")
     p.set_defaults(run=cmd_level)
+
+    p = sub.add_parser("rename", help="name sounds called things like 'Sample 0042' after what Kit heard: kind, tempo, key or note")
+    p.add_argument("--yes", action="store_true", help="rename them (without it, only shows the new names)")
+    p.set_defaults(run=cmd_rename)
 
     p = sub.add_parser("like", help="the sounds most like one sound, here and in other kits (smaller number = closer)")
     p.add_argument("sound", help="a sound in this kit")
