@@ -60,3 +60,30 @@ def test_a_missing_folder_is_a_plain_message(tmp_path):
         assert "there is no folder" in str(stop)
     else:
         raise AssertionError("expected a message")
+
+
+def test_kinds_keys_problems_and_loudness_are_checked_against_names(tmp_path):
+    import random
+    from sounds_by_kind import KINDS
+    from test_problems import faded, write
+
+    kit = tmp_path / "Real Kit"
+    rnd = random.Random(6)
+    for kind_name, folder in (("Kick", "Kicks"), ("Hat", "Hats"), ("808", "808s")):
+        for i in range(2):
+            write(kit / folder / f"{i}.wav", faded(KINDS[kind_name](rnd)))
+    write(kit / "Kicks" / "late.wav", [0.0] * 3000 + faded(KINDS["Kick"](rnd)))
+    (kit / "Loops").mkdir()
+    drums(kit / "Loops" / "Groove 95 BPM Am.wav", 95)   # drums: no key heard, though the name has one
+    before = snapshot(kit)
+
+    numbers = measure.measure(kit)
+
+    assert snapshot(kit) == before
+    kinds = numbers["kind check"]
+    assert kinds["checked"] == 8 and kinds["right"] >= 7
+    assert numbers["key check"]["checked"] == 1 and numbers["key check"]["results"]["no answer"] == 1
+    assert numbers["sound check"]["problems"] == {"late": 1}
+    assert numbers["sound check"]["loudness"]["middle"] < 0
+    text = measure.report(numbers)
+    assert "Kind (Kick, 808" in text and "right" in text and "late" in text and "Loudness (LUFS)" in text

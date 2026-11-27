@@ -317,10 +317,14 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/cli.py` | The `kit` command |
 | `packaging/build_app.py` | Builds the double-click app with PyInstaller |
 | `scripts/release.py` | Publishes a new version (`make release`) |
-| `scripts/measure.py` | Measures Kit on a real kit folder, read only (`make measure`) |
+| `scripts/measure.py` | Measures Kit on a real kit folder, read only (`make measure`): speed, space, and tempo, key, kind, problems and loudness checked against the names in it |
 | `scripts/demo_gif.py` | Records `docs/demo.gif` by clicking through the app in a hidden browser |
 | `Makefile` | Short commands for common tasks |
 | `packaging/make_icon.py` | Draws the app icon (`icon.png`, `Kit.icns`, `Kit.ico`) |
+
+## Help measure Kit on real packs
+
+Every accuracy number above comes from generated sounds. Real packs are layered, processed and odd, so they are the real test, and the names in them are a ready-made answer key: a loop called "Dark 140bpm F#m" says its tempo and key, and a file in "Kicks/" says its kind. `make measure KIT=~/path/to/a/pack` reads a pack (and changes nothing in it), checks what Kit hears against those names, and lists what the problem finder flags. Posting the output as an issue ("Measurements from a real pack") is the most useful report there is.
 
 ## Roadmap
 
@@ -344,6 +348,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Key of melodic loops from their audio | done |
 | Split sheets (PDF) from credits | done |
 | Finding the same sound across kits (`kit dupes`, and on the app's home screen) | done |
+| Measuring kinds, keys, problems and loudness on real packs (`make measure`) | done; waiting on real packs |
 | "More like this": the closest sounds across kits (`kit like`, and ≈ in the app) | done |
 | Problem finder: clipping, late starts, clicks, silence (`kit check`, and ⚠ in the app) | done |
 | Fixing late starts and clicks in one click (`kit fix`, and Fix in the app) | done |
