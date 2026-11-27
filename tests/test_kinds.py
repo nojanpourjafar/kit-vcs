@@ -85,3 +85,34 @@ def test_the_command(kit, monkeypatch, capsys):
     main(["kinds", "hat"])
     assert capsys.readouterr().out == "Hat (1):\n  Hats/hat_01.wav\n"
     assert "Loop" in KINDS
+
+
+def test_the_app_shows_kinds_and_sorts_the_rest_in_the_background(kit):
+    import time
+    from kit.app import App
+    write_wav(kit / "Mystery" / "Sample 01.wav", MAKERS["808"](random.Random(5)))
+    repo = Repo.init(kit, author="Nojan")
+    repo.commit("first")
+    app = App(kit)
+    before = {s["path"]: s["kind"] for s in app.state()["sounds"]}
+    assert before["Kicks/kick_01.wav"] == "Kick" and before["Mystery/Sample 01.wav"] is None   # not listened to yet
+
+    app.auto_sort = True
+    app.sort_soon()
+    deadline = time.time() + 20
+    while app.sorting and time.time() < deadline:
+        time.sleep(0.05)
+    after = {s["path"]: s["kind"] for s in app.state()["sounds"]}
+    assert after["Mystery/Sample 01.wav"] == "808" and app.state()["sorting"] is False
+    assert {s["path"]: s["kind"] for s in app.version("v1")["sounds"]}["Mystery/Sample 01.wav"] == "808"
+    app.sort_soon()
+    assert app.sorting is False                                         # nothing left to listen to: no thread
+
+
+def test_sorting_is_off_unless_the_app_turns_it_on(kit):
+    from kit.app import App
+    write_wav(kit / "Mystery" / "Sample 01.wav", MAKERS["Hat"](random.Random(5)))
+    Repo.init(kit, author="Nojan")
+    app = App(kit)
+    app.sort_soon()
+    assert not app.sorting and not (kit / ".kit" / "kinds.json").exists()

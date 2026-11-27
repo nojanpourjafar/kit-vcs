@@ -26,6 +26,11 @@ body { margin: 0; background: var(--bg); color: var(--ink);
 h1 { margin: 0; font-size: 22px; line-height: 1.25; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .section-head h2 { margin: 0; }
+.kinds-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 12px; }
+button.chip { padding: 3px 11px; font-size: 13px; border-radius: 999px; }
+button.chip small { color: var(--muted); margin-left: 3px; }
+button.chip.on { background: var(--ink); border-color: var(--ink); color: var(--card); }
+button.chip.on small { color: inherit; opacity: .7; }
 .section-tools { display: flex; align-items: center; gap: 8px; }
 .section-tools .search { width: min(240px, 40vw); }
 .note { margin-top: 4px; font-size: 13px; overflow-wrap: anywhere; }
@@ -239,7 +244,7 @@ function soundRow(sound, live) {
   if (sound.key) info.push(sound.key);
   if (sound.info) info.push(sound.info);
   const row = h("li", {class: sound.path === selected ? "sound selected" : "sound", "data-path": sound.path,
-    "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(),
+    "data-search": searchText(sound), "data-key": (sound.key || "").toLowerCase(), "data-kind": sound.kind || "",
     onclick: () => select(row)});
   row.append(playButton(row, sound));
   if (sound.before) {
@@ -318,8 +323,63 @@ function soundSection(title, sounds, live = false) {
       }}, "★ Starred");
     tools.prepend(only);
   }
+  const bar = kindsBar(sounds, list, none, live);
   filter(list, none);
-  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), list, none);
+  return h("section", {}, h("div", {class: "section-head"}, h("h2", {}, title), tools), bar, list, none);
+}
+
+// "All 24 · Kick 6 · 808 3 · Hat 8 ...": one button per kind found in the list.
+// Kinds come from names, or from listening (see kinds.py), which happens in the
+// background on the "Now" screen; the buttons fill in when it is done.
+const KIND_ORDER = ["Kick", "808", "Snare", "Clap", "Hat", "Perc", "Melodic", "Loop"];
+
+function kindsBar(sounds, list, none, live) {
+  const counts = {};
+  for (const sound of sounds) if (sound.kind) counts[sound.kind] = (counts[sound.kind] || 0) + 1;
+  const present = KIND_ORDER.filter((kind) => counts[kind]);
+  if (kindFilter && !present.includes(kindFilter)) kindFilter = null;
+  const bar = h("div", {class: "kinds-bar"});
+  const choose = (kind) => {
+    kindFilter = kind;
+    for (const chip of bar.querySelectorAll(".chip")) chip.classList.toggle("on", chip.dataset.kind === (kind || ""));
+    filter(list, none);
+  };
+  if (present.length) {
+    bar.append(h("button", {class: kindFilter ? "chip" : "chip on", "data-kind": "", onclick: () => choose(null)},
+      "All", h("small", {}, String(sounds.length))));
+    for (const kind of present) {
+      bar.append(h("button", {class: kindFilter === kind ? "chip on" : "chip", "data-kind": kind,
+        title: `Show only ${kind === "808" ? "808s" : kind.toLowerCase() + (kind === "Melodic" ? " sounds" : "s")}`,
+        onclick: () => choose(kind)}, kind, h("small", {}, String(counts[kind]))));
+    }
+  }
+  if (live && state.sorting) {
+    const note = h("span", {class: "muted small"}, "Sorting sounds by listening…");
+    bar.append(note);
+    watchSorting(sounds, list, none, bar);
+  }
+  return bar.children.length ? bar : h("div", {});
+}
+
+// Wait for the background sorting to finish, then fill in each row's kind and
+// redraw only the buttons, so a sound that is playing keeps playing.
+async function watchSorting(sounds, list, none, bar) {
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  if (!bar.isConnected) return;
+  let fresh;
+  try {
+    fresh = await api("/api/state");
+  } catch (error) {
+    return;
+  }
+  if (!bar.isConnected) return;
+  if (fresh.sorting) return watchSorting(sounds, list, none, bar);
+  const kinds = Object.fromEntries((fresh.sounds || []).map((sound) => [sound.path, sound.kind]));
+  for (const sound of sounds) if (sound.path in kinds) sound.kind = kinds[sound.path];
+  for (const row of list.children) row.dataset.kind = kinds[row.dataset.path] || "";
+  state.sorting = false;
+  bar.replaceWith(kindsBar(sounds, list, none, true));
+  filter(list, none);
 }
 
 // A sound's note, under its details: "use for the hook — Lucas". Shared with
@@ -390,6 +450,7 @@ async function star(row, sound) {
 // new box starts empty; this way the search survives the redraw.
 let search = "";
 let starredOnly = false;  // the "★ Starred" button on the "Now" screen
+let kindFilter = null;    // "Kick", "808"... from the buttons above the sounds; null for all
 
 // What the search looks through for one sound: its path, plus its tempo and key
 // written the ways people type them, so "140", "140bpm", "f#m" and "f# minor"
@@ -430,11 +491,12 @@ function filter(list, none) {
   let shown = 0;
   for (const row of list.children) {
     row.hidden = !(words.every((word) => row.dataset.search.includes(word)) && (!key || row.dataset.key === key)
-      && (!onlyStars || row.dataset.starred === "1"));
+      && (!onlyStars || row.dataset.starred === "1") && (!kindFilter || row.dataset.kind === kindFilter));
     if (!row.hidden) shown++;
   }
   none.hidden = shown > 0;
-  none.textContent = !onlyStars ? `No sounds match "${search}".`
+  none.textContent = kindFilter && !search.trim() && !onlyStars ? `No ${kindFilter} sounds here.`
+    : !onlyStars ? `No ${kindFilter ? kindFilter + " " : ""}sounds match "${search}".`
     : search.trim() ? `No starred sounds match "${search}".`
     : "No starred sounds yet. Click ☆ on a sound, or choose one and press S.";
 }

@@ -41,19 +41,42 @@ def kind_from_name(path: str) -> str | None:
     return None
 
 
-def sort_kit(repo, progress=None) -> dict[str, dict]:
+def _cache(repo) -> dict:
+    try:
+        cache = json.loads((repo.dir / "kinds.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return cache if isinstance(cache, dict) else {}
+
+
+def known(repo, manifest: dict) -> dict[str, str]:
+    """{path: kind} for the sounds in `manifest` whose kind is known now: from their
+    names, or listened to before. Nothing is listened to here, so it is quick."""
+    cache = _cache(repo)
+    found = {}
+    for path, entry in manifest.items():
+        kind_ = kind_from_name(path) or cache.get(entry["hash"])
+        if kind_ in KINDS:
+            found[path] = kind_
+    return found
+
+
+def unsorted(repo, manifest: dict) -> int:
+    """How many sounds in `manifest` have no kind from their names and have not been listened to yet."""
+    cache = _cache(repo)
+    return sum(1 for path, entry in manifest.items() if kind_from_name(path) is None and entry["hash"] not in cache)
+
+
+def sort_kit(repo, progress=None, working: dict | None = None) -> dict[str, dict]:
     """{path: {"kind": ..., "from": "name" or "sound"}} for every sound in the kit's folder.
 
     Sounds whose names say nothing are listened to, once: the answer is kept in
     .kit/kinds.json by hash. Sounds Kit cannot decode, and silence, get no kind.
+    `working` is the folder's manifest, if the caller has it already.
     """
     cache_file = repo.dir / "kinds.json"
-    try:
-        cache = json.loads(cache_file.read_text())
-        cache = cache if isinstance(cache, dict) else {}
-    except (OSError, ValueError):
-        cache = {}
-    working = repo.working()
+    cache = _cache(repo)
+    working = working if working is not None else repo.working()
     unnamed = [path for path in working if kind_from_name(path) is None]
     result = {}
     changed = False

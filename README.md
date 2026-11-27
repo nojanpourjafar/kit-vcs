@@ -71,6 +71,8 @@ It opens Kit in your browser. The folder's sounds are listed with waveforms and 
 
 A modified sound has a **Before** button that plays its previous version from the same point, to hear what changed; it works for unsaved edits and for every saved version. The ↗ button on each sound shows the file in Finder (Explorer on Windows), ready to drag into FL Studio or any other program. In `kit app`, sounds can also be dragged straight out of the window into FL Studio or any other program, on macOS and Windows. The search box above the sounds (press `/` to jump to it, Esc to clear) filters them by name; every word typed must appear, so `kick 808` finds `808s/Kick 808.wav`. Tempo and key are read from file names (`Dark Loop 140bpm F#m.wav` shows as 140 BPM, F# min) and can be searched too: `140`, `f#m` or `f# minor`. Loops whose names give no tempo get one estimated from the audio, shown as `≈140 BPM`, melodic loops whose names give no key get one from the audio, shown as `≈F# min` and searchable like a key in a name, and one-shots whose names give no key get the note they play, shown as `≈F#`, so an 808 can be matched to the key of a song; see below for how reliable both are. From the keyboard: ↑ and ↓ choose a sound, Space plays or pauses it, S stars it, and Enter in the search box plays the first match.
 
+Buttons above the sounds (All · Kick · 808 · Snare · Clap · Hat · Perc · Melodic · Loop, each with a count) show one kind at a time, together with the search and ★ Starred. Kinds come from names, and sounds whose names say nothing are listened to in the background when a kit is opened or saved (see `kit kinds` below); their buttons fill in when that is done.
+
 The ✎ on each sound (or N) writes a short note on it, like "use for the hook", shown under the sound with who wrote it, and searchable. Notes are shared: push and pull carry them, and when two people changed the same note, the later change wins. `kit note <path> "text"` and `kit notes` do the same in the terminal.
 
 **Split sheet**, beside the export button, saves a PDF for a version: each person's sounds (credited to whoever first added the audio, even after renames), a share for each person by number of sounds, and a line for each to write the agreed share and sign. When a beat made with the kit is placed, that is the record of who made what. The PDF is written by Kit's own small PDF writer (`pdf.py`), in Helvetica, and the same version always gives the same file.
@@ -295,7 +297,7 @@ The merge compares both sides with the last version they share. A file changed o
 | Key of melodic loops from their audio | done |
 | Split sheets (PDF) from credits | done |
 | Finding the same sound across kits (`kit dupes`) | done; in the app next |
-| Sorting sounds by kind (`kit kinds`) | done; filters in the app next |
+| Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Stars, and comparing a version with any older one | done |
 | MP3 files: exact length and format from their headers; waveforms (also AAC and Ogg) decoded by the page | done |
 | Tempo and note for MP3, AAC and Ogg files | done |

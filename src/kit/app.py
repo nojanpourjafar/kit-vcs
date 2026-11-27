@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
-from . import diagnostics, mp3, names, remote, tags, updates
+from . import diagnostics, kinds, mp3, names, remote, tags, updates
 from .audio import describe
 from .audio import key, key_of, note, note_of, peaks, tempo, tempo_of
 from .manifest import diff
@@ -92,6 +92,8 @@ class App:
         self.update_checked = False
         self.auto_compact = False  # compress saved WAV files in the background; on in the real app
         self.compacting = False
+        self.auto_sort = False  # sort sounds by kind in the background; on in the real app
+        self.sorting = False
         self.compacted: dict | None = None  # what the last background run saved, for the page
         if folder is not None:
             if not Path(folder).is_dir():
@@ -197,9 +199,11 @@ class App:
         by_hash = {saved[path]["hash"]: commit for path, commit in repo.credits().items()}
         sounds = self._sounds(working, changes, by_hash, labels,
                               locate=lambda path, entry: repo.folder / path, key="path", before=saved)
+        known = kinds.known(repo, working)
         for sound in sounds:
             sound["starred"] = sound["path"] in stars
             sound["note"] = notes.get(sound["path"])
+            sound["kind"] = known.get(sound["path"])
         return {
             "repo": True,
             "name": self.folder.name,
@@ -218,6 +222,7 @@ class App:
             "warnings": names.warnings(working),
             "conflicts": repo.conflicts(),
             "compacting": self.compacting,
+            "sorting": self.sorting,
             "compacted": self.compacted if self.compacted and self.compacted["folder"] == str(self.folder) else None,
             "sync": self._sync(repo),
         }
@@ -241,8 +246,10 @@ class App:
         sounds = self._sounds(manifest, changes, by_hash, labels,
                               locate=lambda path, entry: repo.store.file_for(entry["hash"]), key="hash", before=before)
         notes = repo.notes()
+        known = kinds.known(repo, manifest)
         for sound in sounds:
             sound["note"] = notes.get(sound["path"])  # notes belong to the kit, not to one version
+            sound["kind"] = known.get(sound["path"])
         return {
             "label": labels.get(commit.id, commit.id[:8]),
             "id": commit.id, "author": commit.author, "message": commit.message,
@@ -410,7 +417,33 @@ class App:
         result = self._act(action, body)
         if action in self.COMPACT_AFTER:
             self.compact_soon()
+            self.sort_soon()
         return result
+
+    def sort_soon(self) -> None:
+        """Listen to the open kit's sounds whose names say nothing, on a background thread.
+
+        The folder is read under the lock, so it never runs at the same time as
+        a save; the listening (a fraction of a second per sound) is not.
+        """
+        if not self.auto_sort or self.sorting or self.folder is None or not (self.folder / DIR).is_dir():
+            return
+        repo = self.repo()
+        with self.lock:
+            working = repo.working()
+        if not kinds.unsorted(repo, working):
+            return
+        self.sorting = True
+
+        def work() -> None:
+            try:
+                kinds.sort_kit(repo, working=working)
+            except Exception:
+                diagnostics.record(config_dir(), f"Sorting sounds in {repo.folder}\n{traceback.format_exc()}")
+            finally:
+                self.sorting = False
+
+        threading.Thread(target=work, daemon=True).start()
 
     def compact_soon(self) -> None:
         """Start `kit compact` for the open kit on a background thread, unless one is running.
@@ -719,8 +752,9 @@ def make_server(folder=None, port: int = 0, dev: bool = False) -> tuple[Threadin
 
 def serve(folder=".", port: int = 0, open_browser: bool = True, dev: bool = False) -> None:
     server, app = make_server(folder, port, dev=dev)
-    app.auto_compact = True
+    app.auto_compact = app.auto_sort = True
     app.compact_soon()  # a kit saved before compression existed is compressed now
+    app.sort_soon()
     if not dev:
         app.start_update_check()
     url = f"http://127.0.0.1:{server.server_address[1]}/"
