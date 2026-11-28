@@ -81,6 +81,8 @@ The ≈ on a sound (**More like this**) lists the 10 sounds most like it, closes
 
 The ♪ on a one-shot (an 808, a kick, a bass note) makes a copy tuned to another note, the way a sampler does: an 808 in G becomes "808 Glide in F#.wav" for a song in F# minor. The note offered first is the song's key from Fits. Kit measures the exact pitch the sound plays and speeds it up or slows it down by just enough, so a sound a little out of tune lands exactly on the note too; higher notes come out shorter and lower ones longer, as on any sampler, and it goes to the nearest octave, so nothing moves more than 6 semitones. The original is never changed, and loops are not tuned (that would change their tempo). On 45 tunings of generated 808s (sine and distorted, 40 cents off or less, to notes up to 6 semitones away) the copies landed within 5 cents of the note, a median of about 1; most people cannot hear 10. `kit tune <sound> <note>` does the same.
 
+With a song key chosen beside **Fits**, **Tune 808s to F#** does it for every 808 in the kit at once: copies in a new folder, "808s in F#", the ones already on the note copied as they are, so the folder holds the whole set for that song. The originals are not changed, sounds with no clear note are left out (and named in the message), and a folder this made is never tuned again. `kit tune --all F#` does the same.
+
 The ✂ on a loop cuts it into one-shots: each hit becomes its own WAV file, in the loop's format, in a folder beside it ("Groove chops/Groove 01.wav", ...), ready to save as new sounds.
 
 Sounds with something wrong get a ⚠ badge (hover it for the details) and **⚠ Problems** above the list shows only those: **clipping** (the waveform flattened at full scale for 3 samples or more in a row, or a float file past full scale), a **late start** (more than 10 ms of silence before a one-shot, so it plays late when triggered), a **click at the end** (a one-shot cut off instead of faded out, or a loop whose end does not meet its start, so it clicks every time it repeats) and **silent** files. Sounds are checked in the background, together with the sorting by kind below, once each. `kit check` does the same in the terminal.
@@ -188,6 +190,7 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
 | `kit tune <sound> <note>` | Make a copy of a one-shot tuned to a note, the way a sampler does |
+| `kit tune --all <note>` | Copies of every 808 tuned to a note, in a new folder "808s in <note>" |
 | `kit pack [paths...] [--name N] [-o folder]` | Build a zip of the starred sounds (or these folders), sorted into folders by kind, with a contents list |
 | `kit changelog [version] [--since v] [-o folder]` | What each version added, renamed, changed and removed (also in every exported zip) |
 | `kit rename [--yes]` | Name sounds called "Sample 0042" after what Kit heard (kind, tempo and key, or note); shows first |

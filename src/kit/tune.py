@@ -15,6 +15,7 @@ a loop faster changes its tempo (Loops at BPM does that).
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 from .audio import NOTE_NAMES, hz_of
@@ -65,12 +66,15 @@ def resample(values: list, channels: int, ratio: float) -> list[float]:
     return out
 
 
-def tune(repo, path: str, note: str) -> tuple[Path | None, str, float]:
-    """Tune the sound at `path` to `note`. Returns the new file (None if it is in tune already),
-    the note it played, and the shift in semitones."""
+def _note(note: str) -> str:
     note = FLATS.get(note, note)
     if note not in NOTE_NAMES:
         raise KitError(f"{note} is not a note: use C, C#, D ... B")
+    return note
+
+
+def _tuned(repo, path: str, note: str):
+    """(samples and format, or None if in tune already; the note it played; the shift in semitones)."""
     if from_name(path)["bpm"]:
         raise KitError(f"{Path(path).name} is a loop: tuning it would change its tempo")
     hz = pitch(repo, path)
@@ -87,5 +91,71 @@ def tune(repo, path: str, note: str) -> tuple[Path | None, str, float]:
         top = (1 << (8 * width - 1)) - 1
         low, high = (0, 255) if width == 1 else (-top - 1, top)
         tuned = [min(high, max(low, int(round(v + centre)))) for v in tuned]
-    out = save(repo, path, f"in {note}", tuned, rate, channels, width, is_float, in_place=False)
-    return out, played, round(shift, 2)
+    return (tuned, rate, channels, width, is_float), played, round(shift, 2)
+
+
+def tune(repo, path: str, note: str) -> tuple[Path | None, str, float]:
+    """Tune the sound at `path` to `note`. Returns the new file (None if it is in tune already),
+    the note it played, and the shift in semitones."""
+    note = _note(note)
+    made, played, shift = _tuned(repo, path, note)
+    if made is None:
+        return None, played, 0.0
+    return save(repo, path, f"in {note}", *made, in_place=False), played, shift
+
+
+OUTPUT = re.compile(r" in [A-G]#?$")  # "808s in F#": a folder this makes, never tuned again
+
+
+def tune_all(repo, note: str, kinds_wanted=("808",), progress=None) -> tuple[Path, int, int, list[str]]:
+    """Every sound of `kinds_wanted` in the kit, tuned to `note`, in a new folder "808s in F#".
+
+    Sounds already on the note are copied as they are, so the folder holds the
+    whole set. Returns the folder, how many were tuned, how many were copied,
+    and the sounds skipped because they have no clear note.
+    """
+    from .chop import _write_wav
+    from .fix import _encode
+    from .kinds import sort_kit
+
+    note = _note(note)
+    working = repo.working()
+    kind_of = {path: kind["kind"] for path, kind in sort_kit(repo, working=working).items()}
+    chosen = sorted(path for path, kind in kind_of.items()
+                    if kind in kinds_wanted and not any(OUTPUT.search(part) for part in path.split("/")[:-1])
+                    and not from_name(path)["bpm"])
+    if not chosen:
+        raise KitError(f"there are no {' or '.join(kinds_wanted)} sounds in this kit to tune")
+    label = "808s" if tuple(kinds_wanted) == ("808",) else " and ".join(kinds_wanted)
+    folder = repo.folder / f"{label} in {note}"
+    number = 2
+    while folder.exists():
+        folder = repo.folder / f"{label} in {note} {number}"
+        number += 1
+    tuned = copied = 0
+    skipped = []
+    taken: set[str] = set()
+    for done, path in enumerate(chosen, 1):
+        try:
+            made, _, _ = _tuned(repo, path, note)
+        except KitError:
+            skipped.append(path)
+            continue
+        name = Path(path).stem
+        while name.lower() in taken:
+            name += " 2"
+        taken.add(name.lower())
+        folder.mkdir(exist_ok=True)
+        if made is None:
+            out = folder / (name + Path(path).suffix)
+            out.write_bytes((repo.folder / path).read_bytes())
+            copied += 1
+        else:
+            values, rate, channels, width, is_float = made
+            _write_wav(folder / f"{name}.wav", _encode(values, width, is_float), rate, channels, width, is_float)
+            tuned += 1
+        if progress:
+            progress(done, len(chosen))
+    if not tuned and not copied:
+        raise KitError(f"none of the {len(chosen)} sounds has a clear note to tune")
+    return folder, tuned, copied, skipped

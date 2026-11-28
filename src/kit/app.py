@@ -690,6 +690,13 @@ class App:
             way = "up" if shift > 0 else "down"
             return {"message": f"Tuned {Path(path).name} from {played} {way} {abs(shift):.1f} semitones: "
                                f"{out.name}. Save a version to keep it."}
+        if action == "tune-all":
+            from .tune import tune_all
+
+            folder, tuned, copied, skipped = tune_all(repo, str(body.get("note") or ""))
+            parts = [f"tuned {tuned}"] + ([f"{copied} already on the note"] if copied else []) \
+                + ([f"{len(skipped)} with no clear note left out"] if skipped else [])
+            return {"message": f"Made {folder.name}: {', '.join(parts)}. Save a version to keep them."}
         if action == "build-pack":
             from .packs import build
 

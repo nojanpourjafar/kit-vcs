@@ -562,7 +562,17 @@ function songBox(list, none) {
       filter(list, none);
       if (fitsOn) hearAll(list, none, status);
     }}, "Fits");
-  return h("div", {class: "song"}, tempoBox(list, none), key, fits, status);
+  // Every 808 in the song's key: copies in a new folder, ready for this one song.
+  const tuneAll = h("button", {class: "only", hidden: !list.classList.contains("live") || !targetKey || !state.sounds.some((sound) => sound.kind === "808"),
+    title: "Copies of every 808 tuned to the song's key, in a new folder", onclick: (event) => {
+      const note = (targetKey || "").split(" ")[0];
+      if (note) act("tune-all", {note}, event.currentTarget);
+    }}, `Tune 808s to ${(targetKey || "").split(" ")[0]}`);
+  key.addEventListener("change", () => {
+    tuneAll.hidden = !list.classList.contains("live") || !targetKey || !state.sounds.some((sound) => sound.kind === "808");
+    tuneAll.textContent = `Tune 808s to ${(targetKey || "").split(" ")[0]}`;
+  });
+  return h("div", {class: "song"}, tempoBox(list, none), key, fits, tuneAll, status);
 }
 
 // Whether a sound fits the song. What is not known about it does not count

@@ -301,9 +301,16 @@ def cmd_export(args) -> None:
 
 
 def cmd_tune(args) -> None:
-    from .tune import tune
+    from .tune import tune, tune_all
 
     repo = Repo.find()
+    if args.all:
+        folder, tuned, copied, skipped = tune_all(repo, args.sound)
+        print(f"Made {folder.name}/: {tuned} tuned, {copied} already on {args.sound}"
+              + (f"; no clear note, left out: {', '.join(skipped)}" if skipped else ""))
+        return
+    if not args.note:
+        raise KitError("say which note: kit tune <sound> <note>, or kit tune --all <note>")
     sound = Path(args.sound).expanduser().resolve()
     if not sound.is_relative_to(repo.folder) or not sound.is_file():
         raise KitError(f"there is no sound at {args.sound} in this kit")
@@ -765,8 +772,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(run=cmd_like)
 
     p = sub.add_parser("tune", help="make a copy of a one-shot (808, kick, bass) tuned to a note")
-    p.add_argument("sound", help="a one-shot in this kit")
-    p.add_argument("note", help="the note to tune it to: C, C#, D ... B (Db, Eb ... work too)")
+    p.add_argument("sound", help="a one-shot in this kit (with --all: the note)")
+    p.add_argument("note", nargs="?", help="the note to tune it to: C, C#, D ... B (Db, Eb ... work too)")
+    p.add_argument("--all", action="store_true", help='tune every 808 in the kit into a new folder, "808s in <note>"')
     p.set_defaults(run=cmd_tune)
 
     p = sub.add_parser("pack", help="build a zip of chosen sounds, sorted into folders by kind, with a list of contents")

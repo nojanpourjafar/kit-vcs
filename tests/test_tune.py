@@ -90,3 +90,47 @@ def test_kit_tune_and_the_app(kit, monkeypatch, capsys):
     assert "808s/Glide.wav plays G; tuned down" in capsys.readouterr().out
     message = App(kit).act("tune", {"path": "808s/Wide.wav", "note": "E"})["message"]
     assert message.startswith("Tuned Wide.wav from D up 2.0 semitones: Wide in E.wav.")
+
+
+@pytest.fixture
+def eights(tmp_path):
+    """Three 808s (G, D, and one already on F#) and a kick, in a saved kit."""
+    folder = tmp_path / "Pack"
+    (folder / "808s").mkdir(parents=True)
+    an_808(folder / "808s" / "Glide.wav", 31)
+    an_808(folder / "808s" / "Wide.wav", 38, channels=2)
+    an_808(folder / "808s" / "Already.wav", 30)   # F#
+    write(folder / "Kicks" / "kick.wav", faded(KINDS["Kick"](random.Random(1))))
+    Repo.init(folder, author="Test").commit("first")
+    return folder
+
+
+def test_tune_all_puts_every_808_in_the_key_in_a_new_folder(eights):
+    from kit.tune import tune_all
+    repo = Repo(eights)
+    folder, tuned, copied, skipped = tune_all(repo, "F#")
+    assert folder.name == "808s in F#" and (tuned, copied, skipped) == (2, 1, [])
+    assert sorted(p.name for p in folder.iterdir()) == ["Already.wav", "Glide.wav", "Wide.wav"]
+    for made in folder.iterdir():
+        assert cents_from(pitch(repo, made.relative_to(eights).as_posix()), "F#") < 6
+    assert (folder / "Already.wav").read_bytes() == (eights / "808s" / "Already.wav").read_bytes()
+    again, _, _, _ = tune_all(repo, "F#")
+    assert again.name == "808s in F# 2"  # never into the first folder, and never tuning what it made
+    assert len(list(again.iterdir())) == 3
+
+
+def test_tune_all_from_the_app_and_the_terminal(eights, monkeypatch, capsys):
+    message = App(eights).act("tune-all", {"note": "A"})["message"]
+    assert message.startswith("Made 808s in A: tuned 3.")
+    monkeypatch.chdir(eights)
+    main(["tune", "--all", "C"])
+    assert capsys.readouterr().out.startswith("Made 808s in C/: 3 tuned, 0 already on C")
+
+
+def test_tune_all_needs_some_808s(tmp_path):
+    from kit.tune import tune_all
+    folder = tmp_path / "Pack"
+    write(folder / "Kicks" / "kick.wav", faded(KINDS["Kick"](random.Random(1))))
+    Repo.init(folder, author="Test")
+    with pytest.raises(KitError, match="no 808"):
+        tune_all(Repo(folder), "C")
