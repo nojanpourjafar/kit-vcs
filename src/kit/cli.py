@@ -300,6 +300,29 @@ def cmd_export(args) -> None:
     print(f"Wrote {out} ({sounds} sounds, {_size(total)})")
 
 
+def _kit_path(repo: Repo, given: str) -> str:
+    sound = Path(given).expanduser().resolve()
+    if not sound.is_relative_to(repo.folder) or not sound.is_file():
+        raise KitError(f"there is no sound at {given} in this kit")
+    return sound.relative_to(repo.folder).as_posix()
+
+
+def cmd_reverse(args) -> None:
+    from .stretch import reverse
+
+    repo = Repo.find()
+    out = reverse(repo, _kit_path(repo, args.sound))
+    print(f"Wrote {out.relative_to(repo.folder).as_posix()}")
+
+
+def cmd_stretch(args) -> None:
+    from .stretch import stretch
+
+    repo = Repo.find()
+    out, was = stretch(repo, _kit_path(repo, args.sound), args.bpm, args.now)
+    print(f"Stretched from {was:g} to {args.bpm:g} BPM: {out.relative_to(repo.folder).as_posix()}")
+
+
 def cmd_tune(args) -> None:
     from .tune import tune, tune_all
 
@@ -770,6 +793,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("kits", nargs="*", help="other kits or folders to look through too")
     p.add_argument("-n", "--count", type=int, default=10, help="how many to list (default: 10)")
     p.set_defaults(run=cmd_like)
+
+    p = sub.add_parser("reverse", help="make a reversed copy of a sound")
+    p.add_argument("sound", help="a sound in this kit")
+    p.set_defaults(run=cmd_reverse)
+
+    p = sub.add_parser("stretch", help="make a copy of a loop at another tempo, at the same pitch")
+    p.add_argument("sound", help="a loop in this kit")
+    p.add_argument("bpm", type=float, help="the new tempo, e.g. 150")
+    p.add_argument("--now", type=float, help="the loop's tempo, if its name does not say and Kit hears it wrong")
+    p.set_defaults(run=cmd_stretch)
 
     p = sub.add_parser("tune", help="make a copy of a one-shot (808, kick, bass) tuned to a note")
     p.add_argument("sound", help="a one-shot in this kit (with --all: the note)")

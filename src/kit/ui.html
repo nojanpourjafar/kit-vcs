@@ -294,6 +294,8 @@ function soundRow(sound, live) {
       row.append(h("button", {class: "pen", title: "Tune: a copy of this sound in another note, pitched the way a sampler does",
         "aria-label": `Tune ${sound.path}`, onclick: (event) => { event.stopPropagation(); tuneBox(row, sound); }}, "♪"));
     }
+    row.append(h("button", {class: "pen", title: sound.kind === "Loop" || sound.bpm ? "Reverse, or stretch to another tempo" : "Reverse",
+      "aria-label": `Reverse or stretch ${sound.path}`, onclick: (event) => { event.stopPropagation(); editBox(row, sound); }}, "⇄"));
     row.append(h("button", {class: "pen", title: "More like this: the 10 closest sounds, in this kit and every kit you opened before",
       "aria-label": `More like ${sound.path}`, "aria-expanded": "false",
       onclick: (event) => moreLike(row, sound, event.currentTarget)}, "≈"));
@@ -313,15 +315,36 @@ function soundRow(sound, live) {
 // first choice, as that is usually the note an 808 should play.
 function tuneBox(row, sound) {
   const open = row.querySelector(".tune-box");
-  if (open) return open.remove();
+  if (open) open.remove();
+  if (open && open.dataset.which === "tune") return;  // a second click closes it
   const first = (targetKey || "C").split(" ")[0];
   const choice = h("select", {"aria-label": `Note to tune ${sound.path} to`},
     NOTE_NAMES.map((note) => h("option", {value: note, selected: note === first}, note)));
-  const box = h("span", {class: "tune-box", onclick: (event) => event.stopPropagation()}, " · Tune to ", choice,
+  const box = h("span", {class: "tune-box", "data-which": "tune", onclick: (event) => event.stopPropagation()}, " · Tune to ", choice,
     h("button", {class: "link fix", onclick: (event) => act("tune", {path: sound.path, note: choice.value}, event.currentTarget)}, "Make copy"),
     h("button", {class: "link fix", "aria-label": "Close", onclick: () => box.remove()}, "×"));
   row.querySelector(".what .info").append(box);
   choice.focus();
+}
+
+// A reversed copy of any sound; for a loop, also a copy at another tempo, at the
+// same pitch. The tempo offered first is the one from "Loops at BPM".
+function editBox(row, sound) {
+  const open = row.querySelector(".tune-box");
+  if (open) open.remove();
+  if (open && open.dataset.which === "edit") return;
+  const box = h("span", {class: "tune-box", "data-which": "edit", onclick: (event) => event.stopPropagation()}, " · ",
+    h("button", {class: "link fix", onclick: (event) => act("reverse", {path: sound.path}, event.currentTarget)}, "Reverse"));
+  if (sound.kind === "Loop" || sound.bpm || sound.heardBpm) {
+    const bpm = h("input", {type: "number", min: 40, max: 300, value: targetBpm || "", placeholder: "BPM",
+      "aria-label": `New tempo for ${sound.path}`, style: "width: 56px; font-size: 12px; padding: 1px 4px; margin: 0 4px"});
+    box.append(" · Stretch to ", bpm, h("button", {class: "link fix", onclick: (event) => {
+      if (!bpm.value) return bpm.focus();
+      act("stretch", {path: sound.path, bpm: Number(bpm.value)}, event.currentTarget);
+    }}, "Make copy"));
+  }
+  box.append(h("button", {class: "link fix", "aria-label": "Close", onclick: () => box.remove()}, "×"));
+  row.querySelector(".what .info").append(box);
 }
 
 // Open (or close) the list of sounds most like this one, right under it. The

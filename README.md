@@ -83,6 +83,8 @@ The ♪ on a one-shot (an 808, a kick, a bass note) makes a copy tuned to anothe
 
 With a song key chosen beside **Fits**, **Tune 808s to F#** does it for every 808 in the kit at once: copies in a new folder, "808s in F#", the ones already on the note copied as they are, so the folder holds the whole set for that song. The originals are not changed, sounds with no clear note are left out (and named in the message), and a folder this made is never tuned again. `kit tune --all F#` does the same.
 
+The ⇄ on a sound makes a reversed copy ("Crash reversed.wav": the swell into a drop), and on a loop also a copy at another tempo at the same pitch: "Groove 140bpm.wav" at 150 becomes "Groove 150bpm.wav", a real file for any project, where **Loops at BPM** only changes how it plays. The tempo offered is the one from Loops at BPM. Stretching uses WSOLA (waveform-similarity overlap-add): the loop is cut into overlapping 46 ms pieces laid down at the new spacing, each taken from wherever near its place it lines up best with what is already laid down, so the waves do not cancel. On generated drum loops stretched from 90 to 110, 100 to 125, 120 to 96, 128 to 100, 140 to 150 and 160 to 140 BPM, Kit's own tempo detector heard the copies at the new tempo (within half a BPM), they came out exactly the new length, and an 808 stretched by a quarter kept its pitch to within 2 cents; it takes about half a second for a two-bar loop. Past about 25% faster or slower, any stretcher starts to smear hits. `kit reverse <sound>` and `kit stretch <loop> <bpm>` do the same.
+
 The ✂ on a loop cuts it into one-shots: each hit becomes its own WAV file, in the loop's format, in a folder beside it ("Groove chops/Groove 01.wav", ...), ready to save as new sounds.
 
 Sounds with something wrong get a ⚠ badge (hover it for the details) and **⚠ Problems** above the list shows only those: **clipping** (the waveform flattened at full scale for 3 samples or more in a row, or a float file past full scale), a **late start** (more than 10 ms of silence before a one-shot, so it plays late when triggered), a **click at the end** (a one-shot cut off instead of faded out, or a loop whose end does not meet its start, so it clicks every time it repeats) and **silent** files. Sounds are checked in the background, together with the sorting by kind below, once each. `kit check` does the same in the terminal.
@@ -189,6 +191,8 @@ Credentials are read from the usual AWS environment variables or `~/.aws/credent
 | `kit dupes [kits...]` | Find sounds that are in more than one place, even renamed, re-bounced or converted |
 | `kit check [paths...]` | Find clipping, late starts, clicks at the end and silent files |
 | `kit loudness` | How loud each sound is (LUFS) and its peak, by kind, with the ones far from the rest marked |
+| `kit reverse <sound>` | Make a reversed copy |
+| `kit stretch <loop> <bpm> [--now BPM]` | Make a copy of a loop at another tempo, at the same pitch |
 | `kit tune <sound> <note>` | Make a copy of a one-shot tuned to a note, the way a sampler does |
 | `kit tune --all <note>` | Copies of every 808 tuned to a note, in a new folder "808s in <note>" |
 | `kit pack [paths...] [--name N] [-o folder]` | Build a zip of the starred sounds (or these folders), sorted into folders by kind, with a contents list |
@@ -305,6 +309,7 @@ The merge compares both sides with the last version they share. A file changed o
 | `src/kit/problems.py` | Clipping, late starts, clicks and silence (`kit check`) |
 | `src/kit/loudness.py` | Loudness in LUFS (BS.1770) and peaks (`kit loudness`) |
 | `src/kit/fix.py` | Trimming late starts and fading out clicks (`kit fix`), and saving changed sounds safely |
+| `src/kit/stretch.py` | Reversing, and stretching loops to another tempo (WSOLA) |
 | `src/kit/tune.py` | Tuning one-shots to a note (`kit tune`) |
 | `src/kit/packs.py` | Building a pack from chosen sounds, sorted by kind (`kit pack`) |
 | `src/kit/changelog.py` | The changelog of a kit's versions (`kit changelog`, and Changes.txt in exports) |
@@ -365,6 +370,7 @@ Every accuracy number above comes from generated sounds. Real packs are layered,
 | A changelog per release, in every exported zip (`kit changelog`) | done |
 | Building a pack from starred sounds, sorted by kind (`kit pack`, and Build pack in the app) | done |
 | Tuning one-shots to a note (`kit tune`, and ♪ in the app) | done |
+| Reversing, and stretching loops to a tempo at the same pitch (`kit reverse`, `kit stretch`, ⇄ in the app) | done |
 | Sorting sounds by kind (`kit kinds`, and buttons in the app) | done |
 | Chopping loops into one-shots (`kit chop`, and ✂ in the app) | done |
 | Playing loops at a chosen tempo | done |

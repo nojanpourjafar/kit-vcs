@@ -690,6 +690,25 @@ class App:
             way = "up" if shift > 0 else "down"
             return {"message": f"Tuned {Path(path).name} from {played} {way} {abs(shift):.1f} semitones: "
                                f"{out.name}. Save a version to keep it."}
+        if action == "reverse":
+            from .stretch import reverse
+
+            path = body.get("path") or ""
+            self.locate({"path": path})
+            out = reverse(repo, path)
+            return {"message": f"Made {out.name}, {Path(path).name} backwards. Save a version to keep it."}
+        if action == "stretch":
+            from .stretch import stretch
+
+            path = body.get("path") or ""
+            self.locate({"path": path})
+            try:
+                bpm = float(body.get("bpm"))
+            except (TypeError, ValueError):
+                raise KitError("say which tempo, like 150") from None
+            out, was = stretch(repo, path, bpm)
+            return {"message": f"Stretched {Path(path).name} from {was:g} to {bpm:g} BPM at the same pitch: "
+                               f"{out.name}. Save a version to keep it."}
         if action == "tune-all":
             from .tune import tune_all
 
